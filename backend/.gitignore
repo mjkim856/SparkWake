@@ -1,0 +1,20 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+.Python
+venv/
+.venv/
+env/
+.env
+.env.local
+
+# IDE
+.vscode/
+.idea/
+
+# 민감 정보
+*.pem
+*.key
+service-account.json
+credentials.json
