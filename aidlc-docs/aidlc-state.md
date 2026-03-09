@@ -27,10 +27,10 @@
 - **Documentation**: aidlc-docs/ only
 - **IaC Code**: /infra (Terraform)
 
-## Technical Stack (2026.03.02 기준)
+## Technical Stack (2026.03.10 기준)
 - **AI Models**: 
-  - Gemini 3 Flash (gemini-3-flash-preview) - Live API
-  - Gemini 3.1 Pro (gemini-3.1-pro-preview) - Analysis
+  - `gemini-2.5-flash-native-audio-preview-12-2025` - Live API (실시간 음성/비디오)
+  - `gemini-3-flash-preview` - 텍스트 생성 (AI 코칭)
 - **Frontend**: Next.js 15+ / React 19+ / TypeScript 5.x / PWA
 - **Backend**: Python 3.12+ / FastAPI / Google GenAI SDK
 - **Database**: Firestore

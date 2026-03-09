@@ -6,7 +6,7 @@
 import { GoogleGenAI, Modality } from '@google/genai'
 
 // Live API 모델 (Native Audio 지원)
-const LIVE_MODEL = 'gemini-2.5-flash-preview-native-audio-dialog'
+const LIVE_MODEL = 'gemini-2.5-flash-native-audio-preview-12-2025'
 
 // 오디오 설정
 const AUDIO_CONFIG = {
@@ -202,6 +202,11 @@ export class AudioPlayer {
     const audioData = this.queue.shift()!
 
     try {
+      // AudioContext가 suspended 상태면 resume
+      if (this.audioContext.state === 'suspended') {
+        await this.audioContext.resume()
+      }
+
       // Int16 PCM -> Float32 변환
       const float32Data = int16ToFloat32(new Int16Array(audioData))
       const audioBuffer = this.audioContext.createBuffer(

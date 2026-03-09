@@ -76,7 +76,7 @@ async def get_ephemeral_token(user: UserContext):
     client = genai.Client()
     token = await client.auth.create_ephemeral_token(
         config={
-            "model": "gemini-3-flash-preview",
+            "model": "gemini-2.5-flash-native-audio-preview-12-2025",  # Live API용
             "expires_in": 3600  # 1시간
         }
     )

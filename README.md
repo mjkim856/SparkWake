@@ -18,7 +18,7 @@
 |------|------|
 | Frontend | Next.js 15, TypeScript, Tailwind CSS, PWA |
 | Backend | FastAPI, Python 3.11+ |
-| AI | Gemini 2.0 Flash (Live API) |
+| AI | Gemini Live API (`gemini-2.5-flash-native-audio-preview-12-2025`), Text Gen (`gemini-3-flash-preview`) |
 | Database | Cloud Firestore |
 | Auth | Firebase Authentication |
 | Infra | Google Cloud Run, Terraform |
