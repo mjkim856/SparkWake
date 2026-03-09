@@ -9,7 +9,7 @@ from slowapi.util import get_remote_address
 from slowapi.errors import RateLimitExceeded
 
 from app.config import get_settings
-from app.routers import auth, routines, sessions, reports, push
+from app.routers import auth, routines, sessions, reports, push, gemini
 
 settings = get_settings()
 
@@ -49,6 +49,7 @@ app.include_router(routines.router, prefix="/api/routines", tags=["routines"])
 app.include_router(sessions.router, prefix="/api/sessions", tags=["sessions"])
 app.include_router(reports.router, prefix="/api/reports", tags=["reports"])
 app.include_router(push.router, prefix="/api/push", tags=["push"])
+app.include_router(gemini.router, prefix="/api/gemini", tags=["gemini"])
 
 
 @app.get("/health")

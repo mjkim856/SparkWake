@@ -6,7 +6,7 @@ import { db } from '@/lib/firebase'
 import { useAuth } from '@/contexts/AuthContext'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
-import { Sparkles, Check, X } from 'lucide-react'
+import { Sparkles, Check, X, Lightbulb } from 'lucide-react'
 import type { AICoaching, CoachingSuggestion } from '@/types'
 
 interface AICoachingCardProps {
@@ -40,41 +40,54 @@ export function AICoachingCard({ coaching, onApplied }: AICoachingCardProps) {
   }
 
   return (
-    <Card className="bg-gradient-to-r from-blue-50 to-purple-50 border-blue-200">
-      <CardHeader className="pb-3">
+    <Card className="shadow-spark overflow-hidden">
+      <CardHeader className="bg-spark-gradient-soft pb-4">
         <CardTitle className="flex items-center gap-2 text-lg">
-          <Sparkles className="w-5 h-5 text-purple-500" />
+          <div className="w-8 h-8 bg-spark-gradient rounded-lg flex items-center justify-center">
+            <Sparkles className="w-4 h-4 text-white" />
+          </div>
           AI Coaching
         </CardTitle>
       </CardHeader>
-      <CardContent className="space-y-3">
-        {coaching.suggestions.map((suggestion) => (
+      <CardContent className="space-y-3 pt-4">
+        {coaching.suggestions.map((suggestion, index) => (
           <div
             key={suggestion.id}
-            className="p-3 bg-white rounded-lg shadow-sm space-y-2"
+            className="p-4 bg-white rounded-xl border border-border/50 shadow-sm space-y-3"
           >
-            <p className="text-sm">{suggestion.message}</p>
+            <div className="flex items-start gap-3">
+              <div className="w-6 h-6 bg-accent rounded-lg flex items-center justify-center flex-shrink-0 mt-0.5">
+                <Lightbulb className="w-3.5 h-3.5 text-foreground" />
+              </div>
+              <p className="text-sm leading-relaxed">{suggestion.message}</p>
+            </div>
+            
             {suggestion.action && !appliedIds.has(suggestion.id) && (
-              <div className="flex gap-2">
+              <div className="flex gap-2 pl-9">
                 <Button
                   size="sm"
+                  variant="spark"
                   onClick={() => applySuggestion(suggestion)}
                   disabled={isApplying}
+                  className="rounded-lg"
                 >
                   <Check className="w-3 h-3 mr-1" />
                   Apply
                 </Button>
-                <Button size="sm" variant="ghost">
+                <Button size="sm" variant="ghost" className="rounded-lg">
                   <X className="w-3 h-3 mr-1" />
                   Skip
                 </Button>
               </div>
             )}
+            
             {appliedIds.has(suggestion.id) && (
-              <p className="text-xs text-green-600 flex items-center gap-1">
-                <Check className="w-3 h-3" />
-                Applied!
-              </p>
+              <div className="pl-9">
+                <span className="inline-flex items-center gap-1 text-xs text-green-600 bg-green-50 px-2 py-1 rounded-lg">
+                  <Check className="w-3 h-3" />
+                  Applied!
+                </span>
+              </div>
             )}
           </div>
         ))}

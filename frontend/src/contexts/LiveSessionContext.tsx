@@ -4,6 +4,7 @@ import { createContext, useContext, useState, useRef, useCallback, ReactNode } f
 import type { Routine, RoutineResult, SessionState } from '@/types'
 import { useAuth } from './AuthContext'
 import { auth } from '@/lib/firebase'
+import { createLiveSession, startMicrophoneStream, AudioPlayer, LiveSession } from '@/lib/gemini-live'
 
 // 음성 인식 키워드
 const COMPLETE_KEYWORDS = ['응', '어', '다 했어', '끝났어', '완료', '네', 'yes', 'done']
@@ -15,6 +16,7 @@ interface LiveSessionContextValue {
   currentRoutine: Routine | null
   currentRoutineIndex: number
   transcript: string
+  aiMessage: string
   isAudioEnabled: boolean
   isVideoEnabled: boolean
   sessionResults: RoutineResult[]
@@ -39,12 +41,15 @@ export function LiveSessionProvider({ children }: { children: ReactNode }) {
   const [routines, setRoutines] = useState<Routine[]>([])
   const [currentRoutineIndex, setCurrentRoutineIndex] = useState(0)
   const [transcript, setTranscript] = useState('')
+  const [aiMessage, setAiMessage] = useState('')
   const [isAudioEnabled, setIsAudioEnabled] = useState(false)
   const [isVideoEnabled, setIsVideoEnabled] = useState(false)
   const [sessionResults, setSessionResults] = useState<RoutineResult[]>([])
   const [snoozeCount, setSnoozeCount] = useState(0)
 
-  const wsRef = useRef<WebSocket | null>(null)
+  const liveSessionRef = useRef<LiveSession | null>(null)
+  const micStreamRef = useRef<{ stop: () => void } | null>(null)
+  const audioPlayerRef = useRef<AudioPlayer | null>(null)
   const sessionIdRef = useRef<string | null>(null)
 
   const currentRoutine = routines[currentRoutineIndex] || null
@@ -57,47 +62,36 @@ export function LiveSessionProvider({ children }: { children: ReactNode }) {
     setCurrentRoutineIndex(0)
     setSessionResults([])
     setSnoozeCount(0)
+    setAiMessage('')
 
     try {
-      // Firebase ID Token 가져오기
-      const idToken = await auth.currentUser.getIdToken()
-      const authHeaders = {
-        'Content-Type': 'application/json',
-        'Authorization': `Bearer ${idToken}`,
-      }
-
       // Backend에서 Ephemeral Token 발급
-      const tokenRes = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/api/auth/ephemeral-token`, {
-        method: 'POST',
-        headers: authHeaders,
-        body: JSON.stringify({ userId: user.uid }),
-      })
-      
+      const tokenRes = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/api/gemini/ephemeral-token`)
       if (!tokenRes.ok) {
         throw new Error(`Token fetch failed: ${tokenRes.status}`)
       }
-      
       const tokenData = await tokenRes.json()
 
-      // 세션 시작 API 호출
-      const sessionRes = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/api/sessions/start`, {
-        method: 'POST',
-        headers: authHeaders,
-        body: JSON.stringify({ userId: user.uid }),
-      })
-      
-      if (!sessionRes.ok) {
-        throw new Error(`Session start failed: ${sessionRes.status}`)
-      }
-      
-      const { sessionId } = await sessionRes.json()
-      sessionIdRef.current = sessionId
+      // 오디오 플레이어 초기화
+      audioPlayerRef.current = new AudioPlayer()
 
-      // Gemini Live API WebSocket 연결
-      // 실제 구현 시 @google/genai SDK 사용 (tokenData.token 활용)
-      // 여기서는 상태만 업데이트
-      setState('wake_up')
-      setIsAudioEnabled(false) // 하이브리드 모드: 시작 시 마이크 OFF
+      // 시스템 프롬프트
+      const systemPrompt = `당신은 미라클 모닝 AI 코치입니다. 한국어로 짧고 친절하게 대화하세요.
+사용자 루틴: ${userRoutines.map((r, i) => `${i + 1}. ${r.name} (${r.duration}분)`).join(', ')}
+규칙: 1-2문장으로 짧게, 격려하며, 루틴 완료/스킵 시 다음 안내`
+
+      // Gemini Live 세션 연결
+      const session = await createLiveSession(tokenData.token, systemPrompt, {
+        onOpen: () => setState('wake_up'),
+        onMessage: (text) => setAiMessage(text),
+        onAudio: (data) => audioPlayerRef.current?.enqueue(data),
+        onError: (e) => console.error('Gemini Live error:', e),
+        onClose: () => console.log('Gemini Live closed'),
+        onInterrupted: () => audioPlayerRef.current?.clear(),
+      })
+
+      liveSessionRef.current = session
+      sessionIdRef.current = new Date().toISOString().split('T')[0]
     } catch (error) {
       console.error('Session start failed:', error)
       setState('error')
@@ -105,30 +99,14 @@ export function LiveSessionProvider({ children }: { children: ReactNode }) {
   }, [user])
 
   const endSession = useCallback(async () => {
-    if (!sessionIdRef.current || !auth?.currentUser) return
-
-    try {
-      const idToken = await auth.currentUser.getIdToken()
-      
-      const res = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/api/sessions/${sessionIdRef.current}/complete`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${idToken}`,
-        },
-        body: JSON.stringify({ results: sessionResults }),
-      })
-      
-      if (!res.ok) {
-        console.error('Session complete failed:', res.status)
-      }
-    } catch (error) {
-      console.error('Session end failed:', error)
-    }
-
-    wsRef.current?.close()
+    micStreamRef.current?.stop()
+    micStreamRef.current = null
+    liveSessionRef.current?.close()
+    liveSessionRef.current = null
+    audioPlayerRef.current?.close()
+    audioPlayerRef.current = null
     setState('report')
-  }, [sessionResults])
+  }, [])
 
   const completeRoutine = useCallback((method: 'auto' | 'manual') => {
     if (!currentRoutine) return
@@ -181,9 +159,23 @@ export function LiveSessionProvider({ children }: { children: ReactNode }) {
     console.log(`Extending routine by ${minutes} minutes`)
   }, [])
 
-  const toggleAudio = useCallback(() => {
-    setIsAudioEnabled((prev) => !prev)
-  }, [])
+  const toggleAudio = useCallback(async () => {
+    if (isAudioEnabled) {
+      micStreamRef.current?.stop()
+      micStreamRef.current = null
+      setIsAudioEnabled(false)
+    } else {
+      try {
+        const stream = await startMicrophoneStream((data) => {
+          liveSessionRef.current?.sendAudio(data)
+        })
+        micStreamRef.current = stream
+        setIsAudioEnabled(true)
+      } catch (e) {
+        console.error('Microphone access failed:', e)
+      }
+    }
+  }, [isAudioEnabled])
 
   const toggleVideo = useCallback(() => {
     setIsVideoEnabled((prev) => !prev)
@@ -191,8 +183,10 @@ export function LiveSessionProvider({ children }: { children: ReactNode }) {
 
   const handleWakeUp = useCallback(() => {
     setState('routine')
-    setIsAudioEnabled(false) // 루틴 시작 시 마이크 OFF
-  }, [])
+    if (liveSessionRef.current?.isConnected() && currentRoutine) {
+      liveSessionRef.current.send(`좋은 아침! 첫 번째 루틴 "${currentRoutine.name}"을 시작해볼까요?`)
+    }
+  }, [currentRoutine])
 
   const handleSnooze = useCallback(() => {
     setSnoozeCount((prev) => prev + 1)
@@ -206,6 +200,7 @@ export function LiveSessionProvider({ children }: { children: ReactNode }) {
         currentRoutine,
         currentRoutineIndex,
         transcript,
+        aiMessage,
         isAudioEnabled,
         isVideoEnabled,
         sessionResults,
