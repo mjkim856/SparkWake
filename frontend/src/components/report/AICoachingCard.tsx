@@ -17,6 +17,7 @@ interface AICoachingCardProps {
 export function AICoachingCard({ coaching, onApplied }: AICoachingCardProps) {
   const { user } = useAuth()
   const [appliedIds, setAppliedIds] = useState<Set<string>>(new Set())
+  const [skippedIds, setSkippedIds] = useState<Set<string>>(new Set())
   const [isApplying, setIsApplying] = useState(false)
 
   const applySuggestion = async (suggestion: CoachingSuggestion) => {
@@ -39,6 +40,10 @@ export function AICoachingCard({ coaching, onApplied }: AICoachingCardProps) {
     }
   }
 
+  const skipSuggestion = (suggestionId: string) => {
+    setSkippedIds((prev) => new Set([...prev, suggestionId]))
+  }
+
   return (
     <Card className="shadow-spark overflow-hidden">
       <CardHeader className="bg-spark-gradient-soft pb-4">
@@ -50,7 +55,9 @@ export function AICoachingCard({ coaching, onApplied }: AICoachingCardProps) {
         </CardTitle>
       </CardHeader>
       <CardContent className="space-y-3 pt-4">
-        {coaching.suggestions.map((suggestion, index) => (
+        {coaching.suggestions
+          .filter((suggestion) => !skippedIds.has(suggestion.id))
+          .map((suggestion) => (
           <div
             key={suggestion.id}
             className="p-4 bg-white rounded-xl border border-border/50 shadow-sm space-y-3"
@@ -74,7 +81,13 @@ export function AICoachingCard({ coaching, onApplied }: AICoachingCardProps) {
                   <Check className="w-3 h-3 mr-1" />
                   Apply
                 </Button>
-                <Button size="sm" variant="ghost" className="rounded-lg">
+                <Button 
+                  size="sm" 
+                  variant="ghost" 
+                  className="rounded-lg"
+                  onClick={() => skipSuggestion(suggestion.id)}
+                  aria-label="Skip coaching suggestion"
+                >
                   <X className="w-3 h-3 mr-1" />
                   Skip
                 </Button>

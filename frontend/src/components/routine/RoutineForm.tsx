@@ -1,5 +1,6 @@
 'use client'
 
+import { useState } from 'react'
 import { useForm } from 'react-hook-form'
 import { zodResolver } from '@hookform/resolvers/zod'
 import { z } from 'zod'
@@ -37,6 +38,8 @@ const ICON_OPTIONS = [
 ]
 
 export function RoutineForm({ initialData, onSubmit, onCancel }: RoutineFormProps) {
+  const [selectedIcon, setSelectedIcon] = useState(ICON_OPTIONS[0].icon)
+  
   const {
     register,
     handleSubmit,
@@ -145,12 +148,13 @@ export function RoutineForm({ initialData, onSubmit, onCancel }: RoutineFormProp
             <div>
               <label className="block text-sm font-medium mb-2">Choose Icon</label>
               <div className="flex space-x-3 overflow-x-auto pb-2">
-                {ICON_OPTIONS.map((option, index) => (
+                {ICON_OPTIONS.map((option) => (
                   <button
                     key={option.icon}
                     type="button"
+                    onClick={() => setSelectedIcon(option.icon)}
                     className={`flex-shrink-0 w-12 h-12 flex items-center justify-center rounded-xl border-2 transition-colors ${
-                      index === 0 
+                      selectedIcon === option.icon 
                         ? 'border-[#F5B301] bg-yellow-100 text-[#F5B301]' 
                         : 'border-gray-200 bg-[#F9FAFB] text-gray-400 hover:bg-gray-100'
                     }`}
