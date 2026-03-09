@@ -1,6 +1,6 @@
 'use client'
 
-import { createContext, useContext, useState, useRef, useCallback, ReactNode } from 'react'
+import { createContext, useContext, useState, useRef, useCallback, useEffect, ReactNode } from 'react'
 import type { Routine, RoutineResult, SessionState } from '@/types'
 import { useAuth } from './AuthContext'
 import { auth } from '@/lib/firebase'
@@ -65,8 +65,19 @@ export function LiveSessionProvider({ children }: { children: ReactNode }) {
     setAiMessage('')
 
     try {
+      // Firebase ID Token 획득
+      const currentUser = auth?.currentUser
+      if (!currentUser) {
+        throw new Error('User not authenticated')
+      }
+      const idToken = await currentUser.getIdToken()
+
       // Backend에서 Ephemeral Token 발급
-      const tokenRes = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/api/gemini/ephemeral-token`)
+      const tokenRes = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/api/gemini/ephemeral-token`, {
+        headers: {
+          'Authorization': `Bearer ${idToken}`,
+        },
+      })
       if (!tokenRes.ok) {
         throw new Error(`Token fetch failed: ${tokenRes.status}`)
       }
@@ -191,6 +202,27 @@ export function LiveSessionProvider({ children }: { children: ReactNode }) {
   const handleSnooze = useCallback(() => {
     setSnoozeCount((prev) => prev + 1)
     // 5분 후 재알림 로직
+  }, [])
+
+  // 컴포넌트 언마운트 시 리소스 정리
+  useEffect(() => {
+    return () => {
+      // 마이크 스트림 정리
+      if (micStreamRef.current) {
+        micStreamRef.current.stop()
+        micStreamRef.current = null
+      }
+      // Gemini Live 세션 정리
+      if (liveSessionRef.current) {
+        liveSessionRef.current.close()
+        liveSessionRef.current = null
+      }
+      // 오디오 플레이어 정리
+      if (audioPlayerRef.current) {
+        audioPlayerRef.current.close()
+        audioPlayerRef.current = null
+      }
+    }
   }, [])
 
   return (

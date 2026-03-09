@@ -120,5 +120,5 @@ JSON 형식으로만 응답해주세요:
     
     return AICoaching(
         suggestions=suggestions,
-        generated_at=dt.datetime.utcnow(),
+        generated_at=dt.datetime.now(tz=dt.timezone.utc),
     )
