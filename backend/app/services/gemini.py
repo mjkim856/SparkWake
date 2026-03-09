@@ -3,8 +3,8 @@ Gemini API Service
 Ephemeral Token 발급 및 AI 코칭 생성
 ⚠️ API 키는 환경변수에서만 로드 - 절대 로깅 금지
 """
+import datetime as dt
 import json
-from datetime import datetime
 from functools import lru_cache
 from google import genai
 from google.genai import types
@@ -38,17 +38,15 @@ async def create_ephemeral_token() -> dict:
     Live API용 Ephemeral Token 발급
     공식 문서: https://ai.google.dev/gemini-api/docs/ephemeral-tokens
     """
-    import datetime
-    
     client = get_gemini_client()
-    now = datetime.datetime.now(tz=datetime.timezone.utc)
+    now = dt.datetime.now(tz=dt.timezone.utc)
     
     # Ephemeral token 생성 (v1alpha API 사용)
     response = await client.aio.auth_tokens.create(
         config={
             "uses": 1,  # 1회 사용
-            "expire_time": (now + datetime.timedelta(minutes=30)).isoformat(),
-            "new_session_expire_time": (now + datetime.timedelta(minutes=5)).isoformat(),
+            "expire_time": (now + dt.timedelta(minutes=30)).isoformat(),
+            "new_session_expire_time": (now + dt.timedelta(minutes=5)).isoformat(),
             "http_options": {"api_version": "v1alpha"},
         }
     )
@@ -98,7 +96,7 @@ JSON 형식으로만 응답해주세요:
 """
     
     response = await client.aio.models.generate_content(
-        model="gemini-3-flash",
+        model="gemini-3-flash-preview",
         contents=prompt,
         config=types.GenerateContentConfig(
             response_mime_type="application/json",
@@ -122,5 +120,5 @@ JSON 형식으로만 응답해주세요:
     
     return AICoaching(
         suggestions=suggestions,
-        generated_at=datetime.utcnow(),
+        generated_at=dt.datetime.utcnow(),
     )
