@@ -57,14 +57,22 @@ export default function ReportPage() {
     skippedRoutines: 0,
     completionRate: 1,
     routineResults: [
-      { routineId: '1', routineName: 'Meditation', status: 'completed', completionMethod: 'manual', actualDuration: 10, startedAt: null, completedAt: '' },
-      { routineId: '2', routineName: 'Journaling', status: 'completed', completionMethod: 'manual', actualDuration: 15, startedAt: null, completedAt: '' },
-      { routineId: '3', routineName: 'Exercise', status: 'completed', completionMethod: 'auto', actualDuration: 20, startedAt: null, completedAt: '' },
+      { routineId: '1', routineName: 'Meditation', status: 'completed', completionMethod: 'manual', actualDuration: 10, startedAt: null, completedAt: null },
+      { routineId: '2', routineName: 'Journaling', status: 'completed', completionMethod: 'manual', actualDuration: 15, startedAt: null, completedAt: null },
+      { routineId: '3', routineName: 'Exercise', status: 'completed', completionMethod: 'auto', actualDuration: 20, startedAt: null, completedAt: null },
     ],
     createdAt: new Date().toISOString(),
   }
 
   const completionRate = Math.round(mockReport.completionRate * 100)
+  
+  // 실제 데이터 계산
+  const totalActualDuration = mockReport.routineResults.reduce(
+    (sum, r) => sum + (r.actualDuration || 0), 0
+  )
+  const scheduledDuration = mockReport.totalRoutines * 15 // 기본 15분 가정
+  const timeDiff = scheduledDuration - totalActualDuration
+  const formatDuration = (mins: number) => mins >= 60 ? `${Math.floor(mins/60)}h ${mins%60}m` : `${mins}m`
 
   return (
     <div className="min-h-screen bg-slate-50 flex justify-center">
@@ -93,7 +101,7 @@ export default function ReportPage() {
               <p className="text-slate-600 text-xs font-medium uppercase tracking-wider">Start Time</p>
             </div>
             <div className="flex min-w-[100px] flex-1 flex-col gap-2 rounded-xl border border-slate-100 bg-white p-4 items-center text-center shadow-md">
-              <p className="text-slate-900 tracking-tight text-3xl font-bold leading-tight">15m</p>
+              <p className="text-slate-900 tracking-tight text-3xl font-bold leading-tight">{formatDuration(totalActualDuration)}</p>
               <p className="text-slate-600 text-xs font-medium uppercase tracking-wider">Duration</p>
             </div>
           </div>
@@ -106,19 +114,25 @@ export default function ReportPage() {
                 <p className="text-slate-500 text-sm mt-1">Scheduled vs Actual Completion</p>
               </div>
               <div className="flex items-baseline gap-2 mt-2">
-                <p className="text-[#F5B301] tracking-tight text-3xl font-bold leading-tight">+5 mins</p>
-                <p className="text-green-600 text-sm font-medium bg-green-50 px-2 py-0.5 rounded-md">Faster than yesterday</p>
+                <p className="text-[#F5B301] tracking-tight text-3xl font-bold leading-tight">
+                  {timeDiff >= 0 ? `+${timeDiff}` : timeDiff} mins
+                </p>
+                <p className={`text-sm font-medium px-2 py-0.5 rounded-md ${
+                  timeDiff >= 0 ? 'text-green-600 bg-green-50' : 'text-red-600 bg-red-50'
+                }`}>
+                  {timeDiff >= 0 ? 'Faster than scheduled' : 'Slower than scheduled'}
+                </p>
               </div>
               <div className="grid min-h-[160px] grid-flow-col gap-8 grid-rows-[1fr_auto] items-end justify-items-center pt-4">
                 <div className="flex flex-col items-center w-full gap-2" style={{ height: '100%' }}>
                   <div className="w-16 bg-slate-100 rounded-t-lg relative flex items-end justify-center pb-2 shadow-sm" style={{ height: '80%' }}>
-                    <span className="text-slate-500 text-xs font-semibold absolute -top-6">60m</span>
+                    <span className="text-slate-500 text-xs font-semibold absolute -top-6">{formatDuration(scheduledDuration)}</span>
                   </div>
                   <p className="text-slate-600 text-xs font-medium">Scheduled</p>
                 </div>
                 <div className="flex flex-col items-center w-full gap-2" style={{ height: '100%' }}>
-                  <div className="w-16 bg-[#F5B301] rounded-t-lg relative flex items-end justify-center pb-2 shadow-md" style={{ height: '65%' }}>
-                    <span className="text-slate-900 text-xs font-bold absolute -top-6">55m</span>
+                  <div className="w-16 bg-[#F5B301] rounded-t-lg relative flex items-end justify-center pb-2 shadow-md" style={{ height: `${Math.min(100, Math.max(20, (totalActualDuration / scheduledDuration) * 80))}%` }}>
+                    <span className="text-slate-900 text-xs font-bold absolute -top-6">{formatDuration(totalActualDuration)}</span>
                   </div>
                   <p className="text-slate-900 text-xs font-bold">Actual</p>
                 </div>
@@ -144,7 +158,7 @@ export default function ReportPage() {
                   <div className="flex-1 min-w-0">
                     <div className="flex justify-between items-center mb-1">
                       <h4 className="text-slate-900 font-semibold text-base truncate">{result.routineName}</h4>
-                      <span className="text-slate-500 text-xs">10m</span>
+                      <span className="text-slate-500 text-xs">{result.actualDuration ? `${result.actualDuration}m` : '—'}</span>
                     </div>
                     <p className="text-slate-600 text-sm line-clamp-2">
                       {result.status === 'completed' 
@@ -186,7 +200,10 @@ export default function ReportPage() {
             <span className="material-symbols-outlined text-2xl" style={{ fontVariationSettings: "'FILL' 1" }}>bar_chart</span>
             <p className="text-[10px] font-bold leading-normal tracking-wide">Report</p>
           </button>
-          <button className="flex flex-1 flex-col items-center justify-center gap-1 text-slate-500 hover:text-[#F5B301] transition-colors py-2">
+          <button 
+            onClick={() => router.push('/profile')}
+            className="flex flex-1 flex-col items-center justify-center gap-1 text-slate-500 hover:text-[#F5B301] transition-colors py-2"
+          >
             <span className="material-symbols-outlined text-2xl">person</span>
             <p className="text-[10px] font-medium leading-normal tracking-wide">Profile</p>
           </button>

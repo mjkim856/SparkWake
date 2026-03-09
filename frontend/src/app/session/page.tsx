@@ -8,7 +8,7 @@ import { useAuth } from '@/contexts/AuthContext'
 import { LiveSessionProvider, useLiveSession } from '@/contexts/LiveSessionContext'
 import { WakeUpView } from '@/components/session/WakeUpView'
 import { RoutineProgressView } from '@/components/session/RoutineProgressView'
-import type { Routine, DailyReport } from '@/types'
+import type { Routine } from '@/types'
 
 function SessionContent() {
   const router = useRouter()
@@ -142,9 +142,15 @@ function SessionContent() {
           </div>
 
           {/* Listen Button */}
-          <button className="w-full flex items-center justify-center gap-3 bg-[#F5B301] hover:bg-[#E5A501] text-black font-bold py-4 px-6 rounded-xl transition-transform active:scale-95 shadow-primary mt-6">
+          {/* Listen Button - Coming Soon */}
+          <button 
+            disabled
+            className="w-full flex items-center justify-center gap-3 bg-gray-200 text-gray-400 font-bold py-4 px-6 rounded-xl cursor-not-allowed mt-6"
+            aria-label="Listen to AI Summary - Coming soon"
+          >
             <span className="material-symbols-outlined text-2xl">graphic_eq</span>
             Listen to AI Summary
+            <span className="text-xs bg-gray-300 px-2 py-0.5 rounded-full">Soon</span>
           </button>
         </main>
 
