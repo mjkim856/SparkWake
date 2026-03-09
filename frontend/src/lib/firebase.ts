@@ -23,19 +23,23 @@ let analytics: Analytics | undefined
 
 // 클라이언트 사이드에서만 초기화
 if (typeof window !== 'undefined') {
+  const useEmulator = process.env.NEXT_PUBLIC_USE_EMULATOR === 'true'
+  
   app = getApps().length === 0 ? initializeApp(firebaseConfig) : getApps()[0]
   auth = getAuth(app)
   db = getFirestore(app)
 
-  // Analytics 초기화 (브라우저 지원 확인)
-  isSupported().then((supported) => {
-    if (supported && app) {
-      analytics = getAnalytics(app)
-    }
-  })
+  // Analytics 초기화 (에뮬레이터 모드에서는 스킵)
+  if (!useEmulator) {
+    isSupported().then((supported) => {
+      if (supported && app) {
+        analytics = getAnalytics(app)
+      }
+    })
+  }
 
   // 개발 환경에서 에뮬레이터 연결
-  if (process.env.NODE_ENV === 'development' && process.env.NEXT_PUBLIC_USE_EMULATOR === 'true') {
+  if (process.env.NODE_ENV === 'development' && useEmulator) {
     connectAuthEmulator(auth, 'http://localhost:9099')
     connectFirestoreEmulator(db, 'localhost', 8080)
   }
