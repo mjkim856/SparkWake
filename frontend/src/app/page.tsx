@@ -154,6 +154,7 @@ export default function HomePage() {
             <p className="text-[10px] font-medium tracking-wide">Report</p>
           </button>
           <button 
+            onClick={() => router.push('/profile')}
             className="flex flex-1 flex-col items-center justify-end gap-1 text-gray-400 hover:text-[#F5B301] transition-colors"
           >
             <span className="material-symbols-outlined text-2xl">person</span>

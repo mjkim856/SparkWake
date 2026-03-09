@@ -186,7 +186,10 @@ export default function ReportPage() {
             <span className="material-symbols-outlined text-2xl" style={{ fontVariationSettings: "'FILL' 1" }}>bar_chart</span>
             <p className="text-[10px] font-bold leading-normal tracking-wide">Report</p>
           </button>
-          <button className="flex flex-1 flex-col items-center justify-center gap-1 text-slate-500 hover:text-[#F5B301] transition-colors py-2">
+          <button 
+            onClick={() => router.push('/profile')}
+            className="flex flex-1 flex-col items-center justify-center gap-1 text-slate-500 hover:text-[#F5B301] transition-colors py-2"
+          >
             <span className="material-symbols-outlined text-2xl">person</span>
             <p className="text-[10px] font-medium leading-normal tracking-wide">Profile</p>
           </button>
