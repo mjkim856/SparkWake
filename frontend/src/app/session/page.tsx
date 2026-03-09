@@ -8,9 +8,6 @@ import { useAuth } from '@/contexts/AuthContext'
 import { LiveSessionProvider, useLiveSession } from '@/contexts/LiveSessionContext'
 import { WakeUpView } from '@/components/session/WakeUpView'
 import { RoutineProgressView } from '@/components/session/RoutineProgressView'
-import { CompletionSummary } from '@/components/report/CompletionSummary'
-import { Button } from '@/components/ui/button'
-import { ArrowLeft, Loader2 } from 'lucide-react'
 import type { Routine, DailyReport } from '@/types'
 
 function SessionContent() {
@@ -23,6 +20,7 @@ function SessionContent() {
     isAudioEnabled,
     sessionResults,
     snoozeCount,
+    aiMessage,
     startSession,
     completeRoutine,
     skipRoutine,
@@ -40,7 +38,7 @@ function SessionContent() {
       return
     }
 
-    const firestore = db // 타입 가드
+    const firestore = db
     const loadRoutines = async () => {
       const q = query(
         collection(firestore, 'users', user.uid, 'routines'),
@@ -64,95 +62,205 @@ function SessionContent() {
 
   if (isLoading) {
     return (
-      <div className="flex items-center justify-center min-h-screen">
-        <Loader2 className="w-8 h-8 animate-spin text-primary" />
+      <div className="min-h-screen bg-white flex flex-col items-center justify-center">
+        <div className="w-16 h-16 bg-[#F5B301] rounded-2xl flex items-center justify-center animate-pulse">
+          <span className="material-symbols-outlined text-white text-3xl">self_improvement</span>
+        </div>
+        <p className="mt-4 text-gray-500">Preparing your session...</p>
       </div>
     )
   }
 
   if (routines.length === 0) {
     return (
-      <div className="flex flex-col items-center justify-center min-h-screen p-6">
-        <p className="text-muted-foreground mb-4">No routines set up yet</p>
-        <Button onClick={() => router.push('/')}>Add Routines</Button>
+      <div className="min-h-screen bg-white flex flex-col items-center justify-center p-6">
+        <div className="w-20 h-20 bg-gray-100 rounded-2xl flex items-center justify-center mb-6">
+          <span className="material-symbols-outlined text-gray-400 text-4xl">event_busy</span>
+        </div>
+        <h2 className="text-xl font-bold mb-2">No Routines Yet</h2>
+        <p className="text-gray-500 mb-6 text-center">Add your morning routines to get started</p>
+        <button 
+          onClick={() => router.push('/')}
+          className="bg-[#F5B301] hover:bg-[#E5A501] text-black font-bold py-3 px-6 rounded-xl transition-colors"
+        >
+          Add Routines
+        </button>
       </div>
     )
   }
 
   // 리포트 화면
   if (state === 'report') {
-    const report: DailyReport = {
-      id: '',
-      userId: user?.uid || '',
-      date: new Date().toISOString().split('T')[0],
-      wakeUpTime: new Date().toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' }),
-      targetWakeUpTime: routines[0]?.startTime || '',
-      snoozeCount,
-      totalRoutines: routines.length,
-      completedRoutines: sessionResults.filter((r) => r.status === 'completed').length,
-      skippedRoutines: sessionResults.filter((r) => r.status === 'skipped').length,
-      completionRate: sessionResults.filter((r) => r.status === 'completed').length / routines.length,
-      routineResults: sessionResults,
-      createdAt: new Date().toISOString(),
-    }
+    const completedCount = sessionResults.filter((r) => r.status === 'completed').length
+    const completionRate = Math.round((completedCount / routines.length) * 100)
 
     return (
-      <div className="max-w-lg mx-auto p-4">
-        <h1 className="text-2xl font-bold mb-6 text-center">Session Complete! 🎉</h1>
-        <CompletionSummary report={report} />
-        <Button className="w-full mt-6" onClick={() => router.push('/')}>
-          Back to Home
-        </Button>
+      <div className="min-h-screen bg-[#F8F9FA] flex flex-col">
+        <header className="flex items-center p-4 justify-between sticky top-0 bg-white/90 backdrop-blur-md z-10 border-b border-gray-200">
+          <button onClick={() => router.push('/')} className="p-2 -ml-2 text-gray-600 hover:text-gray-900 rounded-full hover:bg-gray-100 transition-colors">
+            <span className="material-icons">arrow_back</span>
+          </button>
+          <h2 className="text-lg font-bold">Session Complete!</h2>
+          <div className="w-10"></div>
+        </header>
+
+        <main className="flex-1 p-4 max-w-md mx-auto w-full">
+          {/* Stats Cards */}
+          <div className="flex gap-3 mb-6">
+            <div className="flex-1 flex flex-col gap-2 rounded-xl border-2 border-[#F5B301] bg-white p-4 items-center text-center shadow-md">
+              <p className="text-3xl font-bold">{completionRate}%</p>
+              <p className="text-gray-500 text-xs font-medium uppercase tracking-wider">Success</p>
+            </div>
+            <div className="flex-1 flex flex-col gap-2 rounded-xl border border-gray-100 bg-white p-4 items-center text-center shadow-md">
+              <p className="text-3xl font-bold">{completedCount}/{routines.length}</p>
+              <p className="text-gray-500 text-xs font-medium uppercase tracking-wider">Done</p>
+            </div>
+            <div className="flex-1 flex flex-col gap-2 rounded-xl border border-gray-100 bg-white p-4 items-center text-center shadow-md">
+              <p className="text-3xl font-bold">{snoozeCount}</p>
+              <p className="text-gray-500 text-xs font-medium uppercase tracking-wider">Snoozes</p>
+            </div>
+          </div>
+
+          {/* Routine Results */}
+          <div className="space-y-3">
+            <h3 className="text-lg font-bold">Routine Results</h3>
+            {sessionResults.map((result, index) => (
+              <div key={index} className="flex items-start gap-4 p-4 rounded-xl border border-gray-100 bg-white shadow-md">
+                <div className={`flex items-center justify-center w-10 h-10 rounded-full shrink-0 ${
+                  result.status === 'completed' ? 'bg-green-50 text-green-500' : 'bg-yellow-50 text-[#F5B301]'
+                }`}>
+                  <span className="material-symbols-outlined">
+                    {result.status === 'completed' ? 'check_circle' : 'warning'}
+                  </span>
+                </div>
+                <div className="flex-1">
+                  <h4 className="font-semibold">{result.routineName}</h4>
+                  <p className="text-sm text-gray-500 capitalize">{result.status}</p>
+                </div>
+              </div>
+            ))}
+          </div>
+
+          {/* Listen Button */}
+          <button className="w-full flex items-center justify-center gap-3 bg-[#F5B301] hover:bg-[#E5A501] text-black font-bold py-4 px-6 rounded-xl transition-transform active:scale-95 shadow-primary mt-6">
+            <span className="material-symbols-outlined text-2xl">graphic_eq</span>
+            Listen to AI Summary
+          </button>
+        </main>
+
+        <div className="p-4 pb-8">
+          <button 
+            onClick={() => router.push('/')}
+            className="w-full bg-gray-900 text-white font-bold py-4 rounded-xl hover:bg-gray-800 transition-colors"
+          >
+            Back to Home
+          </button>
+        </div>
       </div>
     )
   }
 
   return (
-    <div className="max-w-lg mx-auto p-4">
+    <div className="min-h-screen bg-white flex flex-col">
       {/* Header */}
-      <div className="flex items-center mb-6">
-        <Button variant="ghost" size="icon" onClick={() => router.push('/')}>
-          <ArrowLeft className="w-5 h-5" />
-        </Button>
-        <h1 className="text-xl font-semibold ml-2">Morning Session</h1>
-      </div>
-
-      {/* Wake up view */}
-      {state === 'wake_up' && (
-        <WakeUpView
-          onWakeUp={handleWakeUp}
-          onSnooze={handleSnooze}
-          snoozeCount={snoozeCount}
-        />
-      )}
-
-      {/* Routine progress */}
-      {(state === 'routine' || state === 'verification') && currentRoutine && (
-        <RoutineProgressView
-          routine={currentRoutine}
-          routineIndex={currentRoutineIndex}
-          totalRoutines={routines.length}
-          isAudioEnabled={isAudioEnabled}
-          onComplete={completeRoutine}
-          onSkip={skipRoutine}
-          onToggleAudio={toggleAudio}
-        />
-      )}
-
-      {/* Connecting state */}
-      {state === 'connecting' && (
-        <div className="flex flex-col items-center justify-center min-h-[60vh]">
-          <Loader2 className="w-8 h-8 animate-spin text-primary mb-4" />
-          <p className="text-muted-foreground">Connecting to AI...</p>
+      <header className="flex justify-between items-center p-6 border-b border-gray-200">
+        <button onClick={() => router.push('/')} className="text-gray-500 hover:text-gray-900 transition-colors">
+          <span className="material-icons">close</span>
+        </button>
+        <div className="flex flex-col items-center">
+          <h1 className="text-lg font-semibold">Morning Routine</h1>
+          <span className="text-xs text-gray-500">Day 1</span>
         </div>
-      )}
+        <button className="text-gray-500 hover:text-[#F5B301] transition-colors">
+          <span className="material-icons">more_horiz</span>
+        </button>
+      </header>
 
-      {/* Error state */}
-      {state === 'error' && (
-        <div className="flex flex-col items-center justify-center min-h-[60vh]">
-          <p className="text-destructive mb-4">Connection failed</p>
-          <Button onClick={() => startSession(routines)}>Retry</Button>
-        </div>
+      {/* Main Content */}
+      <main className="flex-grow flex flex-col p-6 space-y-8">
+        {/* AI Message Display */}
+        {aiMessage && (
+          <div className="bg-gradient-to-r from-[#F5B301]/10 to-[#F5B301]/5 border border-[#F5B301]/20 rounded-2xl p-4 animate-fade-in">
+            <div className="flex items-start gap-3">
+              <div className="w-8 h-8 bg-[#F5B301] rounded-full flex items-center justify-center shrink-0">
+                <span className="material-symbols-outlined text-white text-sm">assistant</span>
+              </div>
+              <p className="text-gray-700 text-sm leading-relaxed">{aiMessage}</p>
+            </div>
+          </div>
+        )}
+
+        {/* Wake up view */}
+        {state === 'wake_up' && (
+          <WakeUpView
+            onWakeUp={handleWakeUp}
+            onSnooze={handleSnooze}
+            snoozeCount={snoozeCount}
+          />
+        )}
+
+        {/* Routine progress */}
+        {(state === 'routine' || state === 'verification') && currentRoutine && (
+          <RoutineProgressView
+            routine={currentRoutine}
+            routineIndex={currentRoutineIndex}
+            totalRoutines={routines.length}
+            isAudioEnabled={isAudioEnabled}
+            onComplete={completeRoutine}
+            onSkip={skipRoutine}
+            onToggleAudio={toggleAudio}
+          />
+        )}
+
+        {/* Connecting state */}
+        {state === 'connecting' && (
+          <div className="flex-1 flex flex-col items-center justify-center">
+            <div className="w-16 h-16 bg-[#F5B301] rounded-2xl flex items-center justify-center animate-pulse mb-4">
+              <span className="material-symbols-outlined text-white text-3xl animate-spin">sync</span>
+            </div>
+            <p className="text-gray-500">Connecting to AI...</p>
+          </div>
+        )}
+
+        {/* Error state */}
+        {state === 'error' && (
+          <div className="flex-1 flex flex-col items-center justify-center">
+            <div className="w-16 h-16 bg-red-100 rounded-2xl flex items-center justify-center mb-4">
+              <span className="material-symbols-outlined text-red-500 text-3xl">error</span>
+            </div>
+            <p className="text-red-500 font-medium mb-4">Connection failed</p>
+            <button 
+              onClick={() => startSession(routines)}
+              className="bg-[#F5B301] hover:bg-[#E5A501] text-black font-bold py-3 px-6 rounded-xl transition-colors"
+            >
+              Retry
+            </button>
+          </div>
+        )}
+      </main>
+
+      {/* Footer Controls */}
+      {(state === 'routine' || state === 'verification') && (
+        <footer className="p-6 pb-10 flex justify-center space-x-6 items-center">
+          <button 
+            onClick={toggleAudio}
+            className="w-14 h-14 rounded-full bg-white border border-gray-200 flex items-center justify-center text-gray-600 hover:bg-gray-50 hover:text-gray-900 transition-colors shadow-sm"
+          >
+            <span className="material-icons text-2xl">{isAudioEnabled ? 'mic' : 'mic_off'}</span>
+          </button>
+          <button 
+            onClick={() => completeRoutine('manual')}
+            className="w-20 h-20 rounded-full bg-[#F5B301] flex items-center justify-center text-black shadow-lg shadow-[#F5B301]/40 transform hover:scale-105 transition-transform"
+          >
+            <span className="material-icons text-4xl">check</span>
+          </button>
+          <button 
+            onClick={skipRoutine}
+            className="w-14 h-14 rounded-full bg-white border border-gray-200 flex items-center justify-center text-gray-600 hover:bg-gray-50 hover:text-gray-900 transition-colors shadow-sm"
+          >
+            <span className="material-icons text-2xl">skip_next</span>
+          </button>
+        </footer>
       )}
     </div>
   )

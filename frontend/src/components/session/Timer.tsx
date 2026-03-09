@@ -1,16 +1,14 @@
 'use client'
 
-import { useState, useEffect, useCallback } from 'react'
-import { cn } from '@/lib/utils'
+import { useState, useEffect } from 'react'
 
 interface TimerProps {
   duration: number // 초
   onComplete: () => void
   isPaused?: boolean
-  className?: string
 }
 
-export function Timer({ duration, onComplete, isPaused = false, className }: TimerProps) {
+export function Timer({ duration, onComplete, isPaused = false }: TimerProps) {
   const [remaining, setRemaining] = useState(duration)
 
   useEffect(() => {
@@ -35,19 +33,10 @@ export function Timer({ duration, onComplete, isPaused = false, className }: Tim
 
   const minutes = Math.floor(remaining / 60)
   const seconds = remaining % 60
-  const progress = ((duration - remaining) / duration) * 100
 
   return (
-    <div className={cn('text-center', className)}>
-      <div className="text-4xl font-mono font-bold mb-4">
-        {String(minutes).padStart(2, '0')}:{String(seconds).padStart(2, '0')}
-      </div>
-      <div className="w-full bg-gray-200 rounded-full h-2">
-        <div
-          className="bg-primary h-2 rounded-full transition-all duration-1000"
-          style={{ width: `${progress}%` }}
-        />
-      </div>
+    <div className="text-4xl font-light text-[#F5B301] tabular-nums tracking-tight drop-shadow-sm">
+      {String(minutes).padStart(2, '0')}:{String(seconds).padStart(2, '0')}
     </div>
   )
 }
