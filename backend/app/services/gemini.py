@@ -36,21 +36,26 @@ def get_gemini_client() -> genai.Client:
 async def create_ephemeral_token() -> dict:
     """
     Live API용 Ephemeral Token 발급
-    공식 문서: https://ai.google.dev/gemini-api/docs/live#ephemeral-tokens
+    공식 문서: https://ai.google.dev/gemini-api/docs/ephemeral-tokens
     """
-    client = get_gemini_client()
+    import datetime
     
-    # Ephemeral token 생성
+    client = get_gemini_client()
+    now = datetime.datetime.now(tz=datetime.timezone.utc)
+    
+    # Ephemeral token 생성 (v1alpha API 사용)
     response = await client.aio.auth_tokens.create(
-        config=types.CreateAuthTokenConfig(
-            uses=1,  # 1회 사용
-            expire_time_secs=300,  # 5분 유효
-        )
+        config={
+            "uses": 1,  # 1회 사용
+            "expire_time": (now + datetime.timedelta(minutes=30)).isoformat(),
+            "new_session_expire_time": (now + datetime.timedelta(minutes=5)).isoformat(),
+            "http_options": {"api_version": "v1alpha"},
+        }
     )
     
     return {
-        "token": response.token,
-        "expires_at": response.expire_time.isoformat() if response.expire_time else None,
+        "token": response.name,  # token.name이 실제 토큰 값
+        "expires_at": response.expire_time.isoformat() if hasattr(response, 'expire_time') and response.expire_time else None,
     }
 
 
@@ -93,7 +98,7 @@ JSON 형식으로만 응답해주세요:
 """
     
     response = await client.aio.models.generate_content(
-        model="gemini-2.5-flash",
+        model="gemini-3-flash",
         contents=prompt,
         config=types.GenerateContentConfig(
             response_mime_type="application/json",
