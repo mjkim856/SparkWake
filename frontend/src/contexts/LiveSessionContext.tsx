@@ -131,8 +131,9 @@ export function LiveSessionProvider({ children }: { children: ReactNode }) {
       }
       const tokenData = await tokenRes.json()
 
-      // 오디오 플레이어 초기화
+      // 오디오 플레이어 초기화 (모바일 unlock 포함)
       audioPlayerRef.current = new AudioPlayer()
+      await audioPlayerRef.current.unlock() // 사용자 제스처 컨텍스트에서 호출
 
       // 시스템 프롬프트
       const systemPrompt = `당신은 미라클 모닝 AI 코치입니다. 한국어로 짧고 친절하게 대화하세요.
@@ -143,10 +144,6 @@ export function LiveSessionProvider({ children }: { children: ReactNode }) {
       const session = await createLiveSession(tokenData.token, systemPrompt, {
         onOpen: () => {
           setState('wake_up')
-          // 세션 시작 시 AI가 먼저 인사
-          setTimeout(() => {
-            session.send('좋은 아침이에요! 일어나셨나요?')
-          }, 500)
         },
         onMessage: (text) => {
           setAiMessage(text)
@@ -182,11 +179,18 @@ export function LiveSessionProvider({ children }: { children: ReactNode }) {
 
       liveSessionRef.current = session
       sessionIdRef.current = new Date().toISOString().split('T')[0]
+      
+      // 세션 연결 후 AI가 먼저 인사
+      setTimeout(() => {
+        if (liveSessionRef.current?.isConnected()) {
+          liveSessionRef.current.send('좋은 아침이에요! 일어나셨나요?')
+        }
+      }, 1000)
     } catch (error) {
       console.error('Session start failed:', error)
       setState('error')
     }
-  }, [user])
+  }, [user, handleVoiceCommand])
 
   const endSession = useCallback(async () => {
     micStreamRef.current?.stop()
