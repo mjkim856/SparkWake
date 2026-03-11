@@ -5,7 +5,6 @@ import type { Routine } from '@/types'
 
 interface RoutineCardProps {
   routine: Routine
-  index: number
   isActive: boolean
   isCompleted: boolean
   onEdit: () => void
@@ -38,7 +37,7 @@ function getRoutineIcon(name: string): string {
   return ROUTINE_ICONS.default
 }
 
-export function RoutineCard({ routine, index, isActive, isCompleted, onEdit, onDelete }: RoutineCardProps) {
+export function RoutineCard({ routine, isActive, isCompleted, onEdit, onDelete }: RoutineCardProps) {
   const icon = getRoutineIcon(routine.name)
 
   // Completed state

@@ -66,6 +66,7 @@
 .bg-destructive { background-color: var(--destructive); }
 .text-destructive-foreground { color: var(--destructive-foreground); }
 .border-border { border-color: var(--border); }
+.border-border-50 { border-color: rgba(229, 231, 235, 0.5); }
 .text-foreground { color: var(--foreground); }
 
 /* SparkWake Gradient & Shadow */

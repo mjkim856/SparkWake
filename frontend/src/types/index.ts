@@ -46,7 +46,7 @@ export interface RoutineResult {
   routineId: string
   routineName: string
   status: 'completed' | 'skipped' | 'partial'
-  completionMethod: 'auto' | 'manual' | null
+  completionMethod: 'auto' | 'manual' | 'voice' | null
   actualDuration: number | null
   startedAt: string | null
   completedAt: string | null

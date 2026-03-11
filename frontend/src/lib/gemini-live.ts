@@ -19,6 +19,7 @@ export interface LiveSessionCallbacks {
   onOpen?: () => void
   onMessage?: (text: string) => void
   onAudio?: (audioData: ArrayBuffer) => void
+  onAudioEnd?: () => void
   onError?: (error: Error) => void
   onClose?: () => void
   onInterrupted?: () => void
@@ -42,6 +43,7 @@ export async function createLiveSession(
   // Ephemeral Token으로 클라이언트 생성
   const ai = new GoogleGenAI({ apiKey: ephemeralToken })
 
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
   let session: any = null
   let connected = false
 
@@ -64,6 +66,7 @@ export async function createLiveSession(
           connected = true
           callbacks.onOpen?.()
         },
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
         onmessage: (message: any) => {
           // 인터럽트 처리
           if (message.serverContent?.interrupted) {
@@ -84,6 +87,11 @@ export async function createLiveSession(
                 callbacks.onAudio?.(audioData)
               }
             }
+          }
+
+          // 턴 완료 시 onAudioEnd 호출
+          if (message.serverContent?.turnComplete) {
+            callbacks.onAudioEnd?.()
           }
         },
         onerror: (error: ErrorEvent) => {

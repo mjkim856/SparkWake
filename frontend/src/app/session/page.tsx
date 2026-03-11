@@ -18,6 +18,8 @@ function SessionContent() {
     currentRoutine,
     currentRoutineIndex,
     isAudioEnabled,
+    isAiSpeaking,
+    isInterrupted,
     sessionResults,
     snoozeCount,
     aiMessage,
@@ -27,6 +29,7 @@ function SessionContent() {
     toggleAudio,
     handleWakeUp,
     handleSnooze,
+    sendVideoFrame,
   } = useLiveSession()
 
   const [routines, setRoutines] = useState<Routine[]>([])
@@ -34,7 +37,6 @@ function SessionContent() {
 
   useEffect(() => {
     if (!user || !db) {
-      setIsLoading(false)
       return
     }
 
@@ -186,12 +188,34 @@ function SessionContent() {
       <main className="flex-grow flex flex-col p-6 space-y-8">
         {/* AI Message Display */}
         {aiMessage && (
-          <div className="bg-gradient-to-r from-[#F5B301]/10 to-[#F5B301]/5 border border-[#F5B301]/20 rounded-2xl p-4 animate-fade-in">
+          <div className={`border rounded-2xl p-4 animate-fade-in ${
+            isInterrupted 
+              ? 'bg-orange-50 border-orange-200' 
+              : 'bg-gradient-to-r from-[#F5B301]/10 to-[#F5B301]/5 border-[#F5B301]/20'
+          }`}>
             <div className="flex items-start gap-3">
-              <div className="w-8 h-8 bg-[#F5B301] rounded-full flex items-center justify-center shrink-0">
-                <span className="material-symbols-outlined text-white text-sm">assistant</span>
+              <div className={`w-8 h-8 rounded-full flex items-center justify-center shrink-0 ${
+                isAiSpeaking ? 'bg-[#F5B301] animate-pulse' : 'bg-[#F5B301]'
+              }`}>
+                <span className="material-symbols-outlined text-white text-sm">
+                  {isInterrupted ? 'pause' : isAiSpeaking ? 'graphic_eq' : 'assistant'}
+                </span>
               </div>
-              <p className="text-gray-700 text-sm leading-relaxed">{aiMessage}</p>
+              <div className="flex-1">
+                <p className="text-gray-700 text-sm leading-relaxed">{aiMessage}</p>
+                {isAiSpeaking && (
+                  <p className="text-xs text-[#F5B301] mt-1 flex items-center gap-1">
+                    <span className="material-symbols-outlined text-xs">volume_up</span>
+                    Speaking...
+                  </p>
+                )}
+                {isInterrupted && (
+                  <p className="text-xs text-orange-500 mt-1 flex items-center gap-1">
+                    <span className="material-symbols-outlined text-xs">mic</span>
+                    Listening to you...
+                  </p>
+                )}
+              </div>
             </div>
           </div>
         )}
@@ -215,6 +239,7 @@ function SessionContent() {
             onComplete={completeRoutine}
             onSkip={skipRoutine}
             onToggleAudio={toggleAudio}
+            onVideoFrame={sendVideoFrame}
           />
         )}
 

@@ -44,6 +44,15 @@ export function AICoachingCard({ coaching, onApplied }: AICoachingCardProps) {
     setSkippedIds((prev) => new Set([...prev, suggestionId]))
   }
 
+  const filteredSuggestions = coaching.suggestions.filter(
+    (suggestion) => !skippedIds.has(suggestion.id)
+  )
+
+  // 모든 suggestion이 스킵되면 카드 숨김
+  if (filteredSuggestions.length === 0) {
+    return null
+  }
+
   return (
     <Card className="shadow-spark overflow-hidden">
       <CardHeader className="bg-spark-gradient-soft pb-4">
@@ -55,12 +64,10 @@ export function AICoachingCard({ coaching, onApplied }: AICoachingCardProps) {
         </CardTitle>
       </CardHeader>
       <CardContent className="space-y-3 pt-4">
-        {coaching.suggestions
-          .filter((suggestion) => !skippedIds.has(suggestion.id))
-          .map((suggestion) => (
+        {filteredSuggestions.map((suggestion) => (
           <div
             key={suggestion.id}
-            className="p-4 bg-white rounded-xl border border-border/50 shadow-sm space-y-3"
+            className="p-4 bg-white rounded-xl border border-border-50 shadow-sm space-y-3"
           >
             <div className="flex items-start gap-3">
               <div className="w-6 h-6 bg-accent rounded-lg flex items-center justify-center flex-shrink-0 mt-0.5">

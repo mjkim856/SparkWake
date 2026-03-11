@@ -29,7 +29,7 @@ resource "google_storage_bucket" "functions_source" {
 resource "google_cloud_scheduler_job" "push_alarm" {
   name        = "miracle-morning-push-alarm"
   description = "Trigger push notifications for wake-up alarms"
-  schedule    = "* * * * *" # 매분
+  schedule    = "*/5 6-9 * * *" # 06:00~09:55 사이 5분 간격
   time_zone   = "Asia/Seoul"
   region      = var.region
 

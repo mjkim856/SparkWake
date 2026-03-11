@@ -10,19 +10,17 @@ interface RoutineProgressViewProps {
   routineIndex: number
   totalRoutines: number
   isAudioEnabled: boolean
-  onComplete: (method: 'auto' | 'manual') => void
+  onComplete: (method: 'auto' | 'manual' | 'voice') => void
   onSkip: () => void
   onToggleAudio: () => void
+  onVideoFrame?: (frame: ImageData) => void
 }
 
 export function RoutineProgressView({
   routine,
   routineIndex,
   totalRoutines,
-  isAudioEnabled,
-  onComplete,
-  onSkip,
-  onToggleAudio,
+  onVideoFrame,
 }: RoutineProgressViewProps) {
   const [showCamera] = useState(routine.videoVerification)
   const [isTimerComplete, setIsTimerComplete] = useState(false)
@@ -42,7 +40,11 @@ export function RoutineProgressView({
       {/* Camera Preview / Visual Area */}
       <div className="relative w-full aspect-[3/4] bg-gray-100 rounded-xl overflow-hidden shadow-md border border-gray-200">
         {routine.videoVerification && showCamera ? (
-          <CameraPreview isActive={true} className="w-full h-full object-cover" />
+          <CameraPreview 
+            isActive={true} 
+            className="w-full h-full object-cover"
+            onFrame={onVideoFrame}
+          />
         ) : (
           <div className="w-full h-full flex items-center justify-center bg-gradient-to-b from-gray-50 to-gray-100">
             <span className="material-symbols-outlined text-gray-300 text-8xl">

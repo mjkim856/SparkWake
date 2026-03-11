@@ -5,18 +5,16 @@ import { useRouter } from 'next/navigation'
 import { doc, getDoc } from 'firebase/firestore'
 import { db } from '@/lib/firebase'
 import { useAuth } from '@/contexts/AuthContext'
-import type { DailyReport, AICoaching } from '@/types'
+import type { DailyReport } from '@/types'
 
 export default function ReportPage() {
   const router = useRouter()
   const { user } = useAuth()
   const [report, setReport] = useState<DailyReport | null>(null)
-  const [coaching, setCoaching] = useState<AICoaching | null>(null)
   const [isLoading, setIsLoading] = useState(true)
 
   useEffect(() => {
     if (!user || !db) {
-      setIsLoading(false)
       return
     }
 
@@ -158,7 +156,7 @@ export default function ReportPage() {
                   <div className="flex-1 min-w-0">
                     <div className="flex justify-between items-center mb-1">
                       <h4 className="text-slate-900 font-semibold text-base truncate">{result.routineName}</h4>
-                      <span className="text-slate-500 text-xs">{result.actualDuration ? `${result.actualDuration}m` : '—'}</span>
+                      <span className="text-slate-500 text-xs">{result.actualDuration != null ? `${result.actualDuration}m` : '—'}</span>
                     </div>
                     <p className="text-slate-600 text-sm line-clamp-2">
                       {result.status === 'completed' 

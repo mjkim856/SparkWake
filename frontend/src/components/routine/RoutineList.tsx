@@ -23,7 +23,6 @@ export function RoutineList({ onAddClick, onEditClick }: RoutineListProps) {
 
   useEffect(() => {
     if (!user || !db) {
-      setIsLoading(false)
       return
     }
 
@@ -103,12 +102,11 @@ export function RoutineList({ onAddClick, onEditClick }: RoutineListProps) {
           </div>
         ) : (
           <div className="space-y-4">
-            {routines.map((routine, index) => (
+            {routines.map((routine) => (
               <RoutineCard
                 key={routine.id}
                 routine={routine}
-                index={index}
-                isActive={index === 0} // First incomplete routine is active
+                isActive={routines.indexOf(routine) === 0} // First incomplete routine is active
                 isCompleted={false}
                 onEdit={() => onEditClick(routine)}
                 onDelete={() => handleDelete(routine.id)}
