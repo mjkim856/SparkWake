@@ -19,6 +19,7 @@ export interface LiveSessionCallbacks {
   onOpen?: () => void
   onMessage?: (text: string) => void
   onAudio?: (audioData: ArrayBuffer) => void
+  onAudioEnd?: () => void
   onError?: (error: Error) => void
   onClose?: () => void
   onInterrupted?: () => void
@@ -39,94 +40,125 @@ export async function createLiveSession(
   systemInstruction: string,
   callbacks: LiveSessionCallbacks
 ): Promise<LiveSession> {
-  // Ephemeral Token으로 클라이언트 생성
-  const ai = new GoogleGenAI({ apiKey: ephemeralToken })
+  // Ephemeral Token으로 클라이언트 생성 (v1alpha 필수!)
+  const ai = new GoogleGenAI({ 
+    apiKey: ephemeralToken,
+    httpOptions: { apiVersion: 'v1alpha' }
+  })
 
-  let session: any = null
   let connected = false
+  let setupComplete = false
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  let sessionInstance: any = null
 
-  try {
-    session = await ai.live.connect({
-      model: LIVE_MODEL,
-      config: {
-        responseModalities: [Modality.AUDIO, Modality.TEXT],
-        systemInstruction: systemInstruction,
-        speechConfig: {
-          voiceConfig: {
-            prebuiltVoiceConfig: {
-              voiceName: 'Aoede', // 친근한 여성 목소리
-            },
-          },
+  // SDK 문서 예제에 따른 config
+  // systemInstruction은 config 밖에서 별도로 전달
+  const config = {
+    responseModalities: [Modality.AUDIO],
+    systemInstruction: {
+      parts: [{ text: systemInstruction }]
+    },
+    speechConfig: {
+      voiceConfig: {
+        prebuiltVoiceConfig: {
+          voiceName: 'Aoede',
         },
       },
-      callbacks: {
-        onopen: () => {
-          connected = true
-          callbacks.onOpen?.()
-        },
-        onmessage: (message: any) => {
-          // 인터럽트 처리
-          if (message.serverContent?.interrupted) {
-            callbacks.onInterrupted?.()
-            return
-          }
+    },
+  }
 
-          // 모델 응답 처리
-          if (message.serverContent?.modelTurn?.parts) {
-            for (const part of message.serverContent.modelTurn.parts) {
-              // 텍스트 응답
-              if (part.text) {
-                callbacks.onMessage?.(part.text)
-              }
-              // 오디오 응답
-              if (part.inlineData?.data) {
-                const audioData = base64ToArrayBuffer(part.inlineData.data)
-                callbacks.onAudio?.(audioData)
+  // Promise로 세션 연결 완료를 기다림
+  const sessionPromise = ai.live.connect({
+    model: LIVE_MODEL,
+    config: config,
+    callbacks: {
+      onopen: () => {
+        connected = true
+        // setupComplete 메시지를 기다려야 함
+      },
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      onmessage: (message: any) => {
+        // setupComplete 메시지 확인
+        if (message.setupComplete) {
+          setupComplete = true
+          callbacks.onOpen?.()
+          return
+        }
+
+        if (message.serverContent?.interrupted) {
+          callbacks.onInterrupted?.()
+          return
+        }
+
+        if (message.serverContent?.modelTurn?.parts) {
+          for (const part of message.serverContent.modelTurn.parts) {
+            if (part.text) {
+              // AI thinking 과정 필터링 (사용자에게 보여주지 않음)
+              const text = part.text
+              const isThinking = text.includes('**') || 
+                                 text.startsWith('I\'m') ||
+                                 text.includes('Assessing') ||
+                                 text.includes('zeroing in') ||
+                                 text.includes('I\'ll craft')
+              if (!isThinking) {
+                callbacks.onMessage?.(text)
               }
             }
+            if (part.inlineData?.data) {
+              const audioData = base64ToArrayBuffer(part.inlineData.data)
+              callbacks.onAudio?.(audioData)
+            }
           }
-        },
-        onerror: (error: ErrorEvent) => {
-          connected = false
-          callbacks.onError?.(new Error(error.message || 'WebSocket error'))
-        },
-        onclose: () => {
-          connected = false
-          callbacks.onClose?.()
-        },
+        }
+
+        if (message.serverContent?.turnComplete) {
+          callbacks.onAudioEnd?.()
+        }
       },
-    })
-  } catch (error) {
-    callbacks.onError?.(error as Error)
-    throw error
-  }
+      onerror: (error: ErrorEvent) => {
+        connected = false
+        console.error('Live API error:', error)
+        callbacks.onError?.(new Error(error.message || 'WebSocket error'))
+      },
+      onclose: (event: CloseEvent) => {
+        connected = false
+        console.log('Live API closed:', event.code, event.reason)
+        callbacks.onClose?.()
+      },
+    },
+  })
+
+  // 세션 객체 받기
+  sessionInstance = await sessionPromise
 
   return {
     send: (text: string) => {
-      if (!session || !connected) return
-      session.send({
-        clientContent: {
-          turns: [{ role: 'user', parts: [{ text }] }],
-          turnComplete: true,
-        },
-      })
+      if (!sessionInstance || !connected || !setupComplete) {
+        console.log('Cannot send: session not ready (connected:', connected, 'setupComplete:', setupComplete, ')')
+        return
+      }
+      // SDK 문서 예제: session.sendClientContent({ turns: inputTurns })
+      // turns는 문자열로 전달 (가장 간단한 형식)
+      sessionInstance.sendClientContent({ turns: text })
     },
     sendAudio: (audioData: ArrayBuffer) => {
-      if (!session || !connected) return
-      session.sendRealtimeInput({
+      if (!sessionInstance || !connected || !setupComplete) return
+      // SDK 문서: session.sendRealtimeInput({ audio: { data, mimeType } })
+      sessionInstance.sendRealtimeInput({
         audio: {
           data: arrayBufferToBase64(audioData),
           mimeType: `audio/pcm;rate=${AUDIO_CONFIG.inputSampleRate}`,
-        },
+        }
       })
     },
     close: () => {
-      if (session) {
-        session.close()
+      if (sessionInstance) {
+        sessionInstance.close()
         connected = false
+        setupComplete = false
       }
     },
-    isConnected: () => connected,
+    isConnected: () => connected && setupComplete,
   }
 }
 
@@ -179,6 +211,13 @@ export class AudioPlayer {
 
   constructor() {
     this.audioContext = new AudioContext({ sampleRate: AUDIO_CONFIG.outputSampleRate })
+  }
+
+  // 모바일에서 사용자 제스처 후 호출 필요
+  async unlock() {
+    if (this.audioContext.state === 'suspended') {
+      await this.audioContext.resume()
+    }
   }
 
   enqueue(audioData: ArrayBuffer) {
