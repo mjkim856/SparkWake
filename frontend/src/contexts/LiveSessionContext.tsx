@@ -191,6 +191,11 @@ export function LiveSessionProvider({ children }: { children: ReactNode }) {
     }
 
     setSessionResults((prev) => [...prev, result])
+    // 마이크 스트림 정리
+    if (micStreamRef.current) {
+      micStreamRef.current.stop()
+      micStreamRef.current = null
+    }
     setIsAudioEnabled(false)
     setVideoRecognized(false)
 
