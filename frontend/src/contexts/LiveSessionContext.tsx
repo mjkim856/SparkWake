@@ -245,6 +245,7 @@ export function LiveSessionProvider({ children }: { children: ReactNode }) {
         liveSessionRef.current.send(`다음 루틴: "${nextRoutine?.name}" (${nextRoutine?.duration}분). ${videoInfo}`)
       }
     } else {
+      setIsVideoEnabled(false)
       endSession()
     }
   }, [currentRoutine, currentRoutineIndex, routines, endSession])
