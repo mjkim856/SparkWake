@@ -47,7 +47,7 @@ export function RoutineProgressView({
         {routine.videoVerification ? (
           <CameraPreview 
             isActive={true} 
-            onFrame={onVideoFrame}
+            onFrame={videoRecognized ? undefined : onVideoFrame}
             className="w-full h-full object-cover" 
           />
         ) : (
