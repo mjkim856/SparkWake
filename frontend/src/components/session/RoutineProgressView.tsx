@@ -10,9 +10,11 @@ interface RoutineProgressViewProps {
   routineIndex: number
   totalRoutines: number
   isAudioEnabled: boolean
+  videoRecognized?: boolean
   onComplete: (method: 'auto' | 'manual') => void
   onSkip: () => void
   onToggleAudio: () => void
+  onVideoFrame?: (frame: ImageData) => void
 }
 
 export function RoutineProgressView({
@@ -20,11 +22,12 @@ export function RoutineProgressView({
   routineIndex,
   totalRoutines,
   isAudioEnabled,
+  videoRecognized,
   onComplete,
   onSkip,
   onToggleAudio,
+  onVideoFrame,
 }: RoutineProgressViewProps) {
-  const [showCamera] = useState(routine.videoVerification)
   const [isTimerComplete, setIsTimerComplete] = useState(false)
 
   const handleTimerComplete = useCallback(() => {
@@ -41,8 +44,12 @@ export function RoutineProgressView({
     <div className="flex-1 flex flex-col space-y-6">
       {/* Camera Preview / Visual Area */}
       <div className="relative w-full aspect-[3/4] bg-gray-100 rounded-xl overflow-hidden shadow-md border border-gray-200">
-        {routine.videoVerification && showCamera ? (
-          <CameraPreview isActive={true} className="w-full h-full object-cover" />
+        {routine.videoVerification ? (
+          <CameraPreview 
+            isActive={true} 
+            onFrame={onVideoFrame}
+            className="w-full h-full object-cover" 
+          />
         ) : (
           <div className="w-full h-full flex items-center justify-center bg-gradient-to-b from-gray-50 to-gray-100">
             <span className="material-symbols-outlined text-gray-300 text-8xl">
@@ -60,19 +67,26 @@ export function RoutineProgressView({
         
         {/* Status badge */}
         <div className="absolute top-4 left-0 right-0 flex justify-center">
-          <div className="bg-white/70 backdrop-blur-md px-4 py-2 rounded-full border border-white/50 flex items-center space-x-2 shadow-sm">
-            {isTimerComplete ? (
-              <>
-                <span className="material-icons text-green-500 text-sm">check_circle</span>
-                <span className="text-sm font-medium text-gray-800">Time&apos;s up!</span>
-              </>
-            ) : (
-              <>
-                <span className="material-icons text-[#F5B301] text-sm animate-spin">sync</span>
-                <span className="text-sm font-medium text-gray-800">In progress...</span>
-              </>
-            )}
-          </div>
+          {videoRecognized ? (
+            <div className="bg-green-500 px-6 py-3 rounded-full flex items-center space-x-2 shadow-lg animate-pulse">
+              <span className="material-icons text-white text-xl">check_circle</span>
+              <span className="text-lg font-bold text-white">✓ Verified!</span>
+            </div>
+          ) : (
+            <div className="bg-white/70 backdrop-blur-md px-4 py-2 rounded-full border border-white/50 flex items-center space-x-2 shadow-sm">
+              {isTimerComplete ? (
+                <>
+                  <span className="material-icons text-green-500 text-sm">check_circle</span>
+                  <span className="text-sm font-medium text-gray-800">Time&apos;s up!</span>
+                </>
+              ) : (
+                <>
+                  <span className="material-icons text-[#F5B301] text-sm animate-spin">sync</span>
+                  <span className="text-sm font-medium text-gray-800">In progress...</span>
+                </>
+              )}
+            </div>
+          )}
         </div>
 
         {/* Audio bars at bottom */}
