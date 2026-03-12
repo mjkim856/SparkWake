@@ -31,6 +31,7 @@ interface LiveSessionContextValue {
   toggleVideo: () => void
   handleWakeUp: () => void
   handleSnooze: () => void
+  sendVideoFrame: (frame: ImageData) => void
 }
 
 const LiveSessionContext = createContext<LiveSessionContextValue | null>(null)
@@ -88,13 +89,38 @@ export function LiveSessionProvider({ children }: { children: ReactNode }) {
 
       // 시스템 프롬프트
       const systemPrompt = `당신은 미라클 모닝 AI 코치입니다. 한국어로 짧고 친절하게 대화하세요.
+
 사용자 루틴: ${userRoutines.map((r, i) => `${i + 1}. ${r.name} (${r.duration}분)`).join(', ')}
-규칙: 1-2문장으로 짧게, 격려하며, 루틴 완료/스킵 시 다음 안내`
+
+규칙:
+- 1-2문장으로 짧게, 격려하며 대화
+- 루틴 완료/스킵 시 다음 루틴 안내
+- 비디오가 활성화되면 카메라로 사용자의 행동을 관찰
+- 루틴에 맞는 행동을 감지하면 "잘했어요! 완료되었습니다" 같은 완료 메시지 전달
+- 예: 요가 루틴이면 스트레칭 자세, 독서면 책 들고 있는 모습 등을 확인`
 
       // Gemini Live 세션 연결
       const session = await createLiveSession(tokenData.token, systemPrompt, {
         onOpen: () => setState('wake_up'),
-        onMessage: (text) => setAiMessage(text),
+        onMessage: (text) => {
+          setAiMessage(text)
+          // 비디오 인식 결과 처리 - 행동 완료 감지
+          if (currentRoutine && isVideoEnabled) {
+            const lowerText = text.toLowerCase()
+            // AI가 행동 완료를 인식한 경우
+            if (lowerText.includes('완료') || 
+                lowerText.includes('다 했') || 
+                lowerText.includes('끝났') ||
+                lowerText.includes('잘했') ||
+                lowerText.includes('성공') ||
+                lowerText.includes('done') ||
+                lowerText.includes('completed') ||
+                lowerText.includes('finished')) {
+              // 자동 완료 처리
+              completeRoutine('auto')
+            }
+          }
+        },
         onAudio: (data) => audioPlayerRef.current?.enqueue(data),
         onError: (e) => console.error('Gemini Live error:', e),
         onClose: () => console.log('Gemini Live closed'),
@@ -138,10 +164,14 @@ export function LiveSessionProvider({ children }: { children: ReactNode }) {
     if (currentRoutineIndex < routines.length - 1) {
       setCurrentRoutineIndex((prev) => prev + 1)
       setState('routine')
+      // 다음 루틴에 비디오 인증이 필요하면 비디오 활성화 유지, 아니면 비활성화
+      const nextRoutine = routines[currentRoutineIndex + 1]
+      setIsVideoEnabled(nextRoutine?.videoVerification || false)
     } else {
+      setIsVideoEnabled(false) // 모든 루틴 완료 시 비디오 OFF
       endSession()
     }
-  }, [currentRoutine, currentRoutineIndex, routines.length, endSession])
+  }, [currentRoutine, currentRoutineIndex, routines, endSession])
 
   const skipRoutine = useCallback(() => {
     if (!currentRoutine) return
@@ -194,6 +224,10 @@ export function LiveSessionProvider({ children }: { children: ReactNode }) {
 
   const handleWakeUp = useCallback(() => {
     setState('routine')
+    // 첫 번째 루틴에 비디오 인증이 필요하면 자동으로 비디오 활성화
+    if (currentRoutine?.videoVerification) {
+      setIsVideoEnabled(true)
+    }
     if (liveSessionRef.current?.isConnected() && currentRoutine) {
       liveSessionRef.current.send(`좋은 아침! 첫 번째 루틴 "${currentRoutine.name}"을 시작해볼까요?`)
     }
@@ -203,6 +237,12 @@ export function LiveSessionProvider({ children }: { children: ReactNode }) {
     setSnoozeCount((prev) => prev + 1)
     // 5분 후 재알림 로직
   }, [])
+
+  const sendVideoFrame = useCallback((frame: ImageData) => {
+    if (liveSessionRef.current?.isConnected() && isVideoEnabled) {
+      liveSessionRef.current.sendVideo(frame)
+    }
+  }, [isVideoEnabled])
 
   // 컴포넌트 언마운트 시 리소스 정리
   useEffect(() => {
@@ -246,6 +286,7 @@ export function LiveSessionProvider({ children }: { children: ReactNode }) {
         toggleVideo,
         handleWakeUp,
         handleSnooze,
+        sendVideoFrame,
       }}
     >
       {children}

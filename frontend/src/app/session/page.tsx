@@ -27,6 +27,7 @@ function SessionContent() {
     toggleAudio,
     handleWakeUp,
     handleSnooze,
+    sendVideoFrame,
   } = useLiveSession()
 
   const [routines, setRoutines] = useState<Routine[]>([])
@@ -215,6 +216,7 @@ function SessionContent() {
             onComplete={completeRoutine}
             onSkip={skipRoutine}
             onToggleAudio={toggleAudio}
+            onVideoFrame={sendVideoFrame}
           />
         )}
 

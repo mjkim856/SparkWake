@@ -27,6 +27,7 @@ export interface LiveSessionCallbacks {
 export interface LiveSession {
   send: (text: string) => void
   sendAudio: (audioData: ArrayBuffer) => void
+  sendVideo: (imageData: ImageData) => void
   close: () => void
   isConnected: () => boolean
 }
@@ -76,7 +77,11 @@ export async function createLiveSession(
             for (const part of message.serverContent.modelTurn.parts) {
               // 텍스트 응답
               if (part.text) {
-                callbacks.onMessage?.(part.text)
+                // "thinking" 과정 필터링 - 사용자에게 보이지 않도록
+                const text = part.text.trim()
+                if (text && !text.startsWith('**') && !text.includes('Assessing') && !text.includes('I\'m now')) {
+                  callbacks.onMessage?.(text)
+                }
               }
               // 오디오 응답
               if (part.inlineData?.data) {
@@ -117,6 +122,26 @@ export async function createLiveSession(
         audio: {
           data: arrayBufferToBase64(audioData),
           mimeType: `audio/pcm;rate=${AUDIO_CONFIG.inputSampleRate}`,
+        },
+      })
+    },
+    sendVideo: (imageData: ImageData) => {
+      if (!session || !connected) return
+      // ImageData를 JPEG로 변환
+      const canvas = document.createElement('canvas')
+      canvas.width = imageData.width
+      canvas.height = imageData.height
+      const ctx = canvas.getContext('2d')
+      if (!ctx) return
+      
+      ctx.putImageData(imageData, 0, 0)
+      const base64 = canvas.toDataURL('image/jpeg', 0.7).split(',')[1]
+      
+      // SDK 문서: session.sendRealtimeInput({ video: { data, mimeType } })
+      session.sendRealtimeInput({
+        video: {
+          data: base64,
+          mimeType: 'image/jpeg',
         },
       })
     },

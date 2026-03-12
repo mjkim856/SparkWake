@@ -5,8 +5,12 @@ const nextConfig: NextConfig = {
   // 프로덕션 빌드 시 활성화
   reactStrictMode: true,
   
-  // 이미지 최적화
+  // Firebase Hosting을 위한 static export
+  output: 'export',
+  
+  // 이미지 최적화 (static export에서는 unoptimized 필요)
   images: {
+    unoptimized: true,
     remotePatterns: [
       {
         protocol: 'https',
