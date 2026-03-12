@@ -27,6 +27,7 @@ export interface LiveSessionCallbacks {
 export interface LiveSession {
   send: (text: string) => void
   sendAudio: (audioData: ArrayBuffer) => void
+  sendVideo: (imageData: ImageData) => void
   close: () => void
   isConnected: () => boolean
 }
@@ -39,8 +40,11 @@ export async function createLiveSession(
   systemInstruction: string,
   callbacks: LiveSessionCallbacks
 ): Promise<LiveSession> {
-  // Ephemeral Token으로 클라이언트 생성
-  const ai = new GoogleGenAI({ apiKey: ephemeralToken })
+  // Ephemeral Token으로 클라이언트 생성 (v1alpha API 필수)
+  const ai = new GoogleGenAI({ 
+    apiKey: ephemeralToken,
+    httpOptions: { apiVersion: 'v1alpha' }
+  })
 
   let session: any = null
   let connected = false
@@ -49,34 +53,44 @@ export async function createLiveSession(
     session = await ai.live.connect({
       model: LIVE_MODEL,
       config: {
-        responseModalities: [Modality.AUDIO, Modality.TEXT],
-        systemInstruction: systemInstruction,
-        speechConfig: {
-          voiceConfig: {
-            prebuiltVoiceConfig: {
-              voiceName: 'Aoede', // 친근한 여성 목소리
-            },
-          },
-        },
+        responseModalities: [Modality.AUDIO],
+        outputAudioTranscription: {},  // AI 음성을 텍스트로도 받기
       },
       callbacks: {
         onopen: () => {
-          connected = true
-          callbacks.onOpen?.()
+          // 연결 성공
         },
         onmessage: (message: any) => {
+          // setupComplete 메시지 처리
+          if (message.setupComplete) {
+            connected = true
+            callbacks.onOpen?.()
+            return
+          }
+          
           // 인터럽트 처리
           if (message.serverContent?.interrupted) {
             callbacks.onInterrupted?.()
             return
           }
 
+          // AI 음성 transcription 처리 (outputTranscription)
+          if (message.serverContent?.outputTranscription?.text) {
+            const text = message.serverContent.outputTranscription.text.trim()
+            if (text) {
+              callbacks.onMessage?.(text)
+            }
+          }
+
           // 모델 응답 처리
           if (message.serverContent?.modelTurn?.parts) {
             for (const part of message.serverContent.modelTurn.parts) {
-              // 텍스트 응답
+              // 텍스트 응답 (fallback)
               if (part.text) {
-                callbacks.onMessage?.(part.text)
+                const text = part.text.trim()
+                if (text && !text.startsWith('**') && !text.includes('Assessing') && !text.includes('I\'m now')) {
+                  callbacks.onMessage?.(text)
+                }
               }
               // 오디오 응답
               if (part.inlineData?.data) {
@@ -90,7 +104,7 @@ export async function createLiveSession(
           connected = false
           callbacks.onError?.(new Error(error.message || 'WebSocket error'))
         },
-        onclose: () => {
+        onclose: (event: CloseEvent) => {
           connected = false
           callbacks.onClose?.()
         },
@@ -104,11 +118,10 @@ export async function createLiveSession(
   return {
     send: (text: string) => {
       if (!session || !connected) return
-      session.send({
-        clientContent: {
-          turns: [{ role: 'user', parts: [{ text }] }],
-          turnComplete: true,
-        },
+      // SDK 문서: session.sendClientContent({ turns: [...] })
+      session.sendClientContent({
+        turns: [{ role: 'user', parts: [{ text }] }],
+        turnComplete: true,
       })
     },
     sendAudio: (audioData: ArrayBuffer) => {
@@ -117,6 +130,25 @@ export async function createLiveSession(
         audio: {
           data: arrayBufferToBase64(audioData),
           mimeType: `audio/pcm;rate=${AUDIO_CONFIG.inputSampleRate}`,
+        },
+      })
+    },
+    sendVideo: (imageData: ImageData) => {
+      if (!session || !connected) return
+      // ImageData를 JPEG로 변환
+      const canvas = document.createElement('canvas')
+      canvas.width = imageData.width
+      canvas.height = imageData.height
+      const ctx = canvas.getContext('2d')
+      if (!ctx) return
+      
+      ctx.putImageData(imageData, 0, 0)
+      const base64 = canvas.toDataURL('image/jpeg', 0.7).split(',')[1]
+      
+      session.sendRealtimeInput({
+        video: {
+          data: base64,
+          mimeType: 'image/jpeg',
         },
       })
     },
@@ -129,6 +161,7 @@ export async function createLiveSession(
     isConnected: () => connected,
   }
 }
+
 
 /**
  * 마이크 오디오 스트림 시작
@@ -151,7 +184,6 @@ export async function startMicrophoneStream(
 
   processor.onaudioprocess = (e) => {
     const inputData = e.inputBuffer.getChannelData(0)
-    // Float32 -> Int16 PCM 변환
     const pcmData = float32ToInt16(inputData)
     onAudioData(pcmData.buffer as ArrayBuffer)
   }
@@ -202,12 +234,10 @@ export class AudioPlayer {
     const audioData = this.queue.shift()!
 
     try {
-      // AudioContext가 suspended 상태면 resume
       if (this.audioContext.state === 'suspended') {
         await this.audioContext.resume()
       }
 
-      // Int16 PCM -> Float32 변환
       const float32Data = int16ToFloat32(new Int16Array(audioData))
       const audioBuffer = this.audioContext.createBuffer(
         1,
@@ -222,7 +252,6 @@ export class AudioPlayer {
       source.onended = () => this.playNext()
       source.start()
     } catch (error) {
-      console.error('Audio playback error:', error)
       this.playNext()
     }
   }
