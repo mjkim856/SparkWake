@@ -125,14 +125,24 @@ export function LiveSessionProvider({ children }: { children: ReactNode }) {
           if (currentRoutineRef.current && isVideoEnabledRef.current) {
             const lowerText = text.toLowerCase()
             
-            // 엄격한 패턴 매칭 - 실제 완료/인증 확인 문구만 허용
+            // 부정어 체크 (한국어 + 영어) - 부정문이면 매칭하지 않음
+            const negativePatterns = /아직|안\s|않|아니|못\s|없|not yet|haven't|hasn't|didn't|don't|can't|couldn't|unable/i
+            if (negativePatterns.test(lowerText)) {
+              return
+            }
+            
+            // 엄격한 패턴 매칭 (한국어 + 영어)
             const strictPatterns = [
+              // 한국어
               /확인\s*(완료|됐|됨|했)/,
               /인증\s*(완료|됐|됨|성공)/,
-              /완료/,
-              /잘\s*했/,
-              /성공/,
-              /(done|completed|finished|verified)/i,
+              /완료(됐|됨|했|입니다|예요|야|!)/,
+              /성공(했|됐|이에요|입니다|!)/,
+              /잘\s*(했어|했습니다|했네|하셨)/,
+              // 영어
+              /(verified|confirmed|completed|done|finished|great job|well done|nice|perfect|got it)/i,
+              /you('ve| have)?\s*(done|did|completed|finished)/i,
+              /i (can )?(see|confirm|verify)/i,
             ]
             
             const isVerified = strictPatterns.some(pattern => pattern.test(lowerText))
@@ -181,6 +191,11 @@ export function LiveSessionProvider({ children }: { children: ReactNode }) {
     }
 
     setSessionResults((prev) => [...prev, result])
+    // 마이크 스트림 정리
+    if (micStreamRef.current) {
+      micStreamRef.current.stop()
+      micStreamRef.current = null
+    }
     setIsAudioEnabled(false)
     setVideoRecognized(false)
 
@@ -235,6 +250,7 @@ export function LiveSessionProvider({ children }: { children: ReactNode }) {
         liveSessionRef.current.send(`다음 루틴: "${nextRoutine?.name}" (${nextRoutine?.duration}분). ${videoInfo}`)
       }
     } else {
+      setIsVideoEnabled(false)
       endSession()
     }
   }, [currentRoutine, currentRoutineIndex, routines, endSession])
