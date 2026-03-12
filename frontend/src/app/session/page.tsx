@@ -12,7 +12,7 @@ import type { Routine } from '@/types'
 
 function SessionContent() {
   const router = useRouter()
-  const { user } = useAuth()
+  const { user, isLoading: authLoading } = useAuth()
   const {
     state,
     currentRoutine,
@@ -35,6 +35,9 @@ function SessionContent() {
   const [isLoading, setIsLoading] = useState(true)
 
   useEffect(() => {
+    // 인증 로딩 중이면 대기
+    if (authLoading) return
+    
     if (!user || !db) {
       setIsLoading(false)
       return
@@ -60,9 +63,9 @@ function SessionContent() {
     }
 
     loadRoutines()
-  }, [user, startSession])
+  }, [user, authLoading, startSession])
 
-  if (isLoading) {
+  if (isLoading || authLoading) {
     return (
       <div className="min-h-screen bg-white flex flex-col items-center justify-center">
         <div className="w-16 h-16 bg-[#F5B301] rounded-2xl flex items-center justify-center animate-pulse">

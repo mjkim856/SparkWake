@@ -59,8 +59,11 @@ export async function createLiveSession(
       callbacks: {
         onopen: () => {
           // 연결 성공
+          console.log('[LIVE] Connection opened')
         },
         onmessage: (message: any) => {
+          console.log('[LIVE] Raw message:', JSON.stringify(message).substring(0, 200))
+          
           // setupComplete 메시지 처리
           if (message.setupComplete) {
             connected = true
@@ -77,6 +80,7 @@ export async function createLiveSession(
           // AI 음성 transcription 처리 (outputTranscription)
           if (message.serverContent?.outputTranscription?.text) {
             const text = message.serverContent.outputTranscription.text.trim()
+            console.log('[LIVE] Transcription text:', text)
             if (text) {
               callbacks.onMessage?.(text)
             }
@@ -88,6 +92,7 @@ export async function createLiveSession(
               // 텍스트 응답 (fallback)
               if (part.text) {
                 const text = part.text.trim()
+                console.log('[LIVE] Part text:', text)
                 if (text && !text.startsWith('**') && !text.includes('Assessing') && !text.includes('I\'m now')) {
                   callbacks.onMessage?.(text)
                 }

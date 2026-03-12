@@ -21,6 +21,8 @@ class Settings(BaseSettings):
     allowed_origins: list[str] = [
         "http://localhost:3000",
         "https://localhost:3000",
+        "https://project-bf49180a-39f8-45b2-949.web.app",
+        "https://project-bf49180a-39f8-45b2-949.firebaseapp.com",
     ]
     
     # Firebase (프로젝트 ID만 - 키는 환경변수)

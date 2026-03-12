@@ -1,6 +1,9 @@
 import type { NextConfig } from 'next'
 
 const nextConfig: NextConfig = {
+  // Static export for Firebase Hosting
+  output: 'export',
+  
   // PWA 설정은 next-pwa 패키지로 처리
   // 프로덕션 빌드 시 활성화
   reactStrictMode: true,
@@ -13,6 +16,7 @@ const nextConfig: NextConfig = {
         hostname: 'lh3.googleusercontent.com',
       },
     ],
+    unoptimized: true, // static export에서 필요
   },
 }
 
