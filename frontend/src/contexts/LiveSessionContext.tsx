@@ -58,17 +58,16 @@ export function LiveSessionProvider({ children }: { children: ReactNode }) {
   // 콜백에서 최신 상태 참조를 위한 ref
   const currentRoutineRef = useRef<Routine | null>(null)
   const isVideoEnabledRef = useRef(false)
+  const routinesRef = useRef<Routine[]>([])
+  const currentRoutineIndexRef = useRef(0)
 
   const currentRoutine = routines[currentRoutineIndex] || null
   
-  // ref 동기화
-  useEffect(() => {
-    currentRoutineRef.current = currentRoutine
-  }, [currentRoutine])
-  
-  useEffect(() => {
-    isVideoEnabledRef.current = isVideoEnabled
-  }, [isVideoEnabled])
+  // ref 동기화 - 즉시 동기화 (useEffect 대신 직접 할당)
+  currentRoutineRef.current = currentRoutine
+  isVideoEnabledRef.current = isVideoEnabled
+  routinesRef.current = routines
+  currentRoutineIndexRef.current = currentRoutineIndex
 
 
   const startSession = useCallback(async (userRoutines: Routine[]) => {
@@ -121,8 +120,14 @@ export function LiveSessionProvider({ children }: { children: ReactNode }) {
         onMessage: (text) => {
           setAiMessage(text)
           
-          // 비디오 인식 결과 처리 (엄격한 키워드 매칭)
-          if (currentRoutineRef.current && isVideoEnabledRef.current) {
+          // 비디오 인식 결과 처리 - ref를 통해 최신 상태 확인
+          const currentIdx = currentRoutineIndexRef.current
+          const allRoutines = routinesRef.current
+          const routineForCheck = allRoutines[currentIdx]
+          const hasVideoVerification = routineForCheck?.videoVerification || false
+          
+          // 비디오 인증이 필요한 루틴인 경우에만 체크
+          if (hasVideoVerification || isVideoEnabledRef.current) {
             const lowerText = text.toLowerCase()
             
             // 부정어 체크 (한국어 + 영어) - 부정문이면 매칭하지 않음
