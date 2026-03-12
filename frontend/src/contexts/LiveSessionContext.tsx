@@ -19,6 +19,7 @@ interface LiveSessionContextValue {
   aiMessage: string
   isAudioEnabled: boolean
   isVideoEnabled: boolean
+  videoRecognized: boolean  // 비디오 인식 성공 여부
   sessionResults: RoutineResult[]
   snoozeCount: number
 
@@ -45,6 +46,7 @@ export function LiveSessionProvider({ children }: { children: ReactNode }) {
   const [aiMessage, setAiMessage] = useState('')
   const [isAudioEnabled, setIsAudioEnabled] = useState(false)
   const [isVideoEnabled, setIsVideoEnabled] = useState(false)
+  const [videoRecognized, setVideoRecognized] = useState(false)
   const [sessionResults, setSessionResults] = useState<RoutineResult[]>([])
   const [snoozeCount, setSnoozeCount] = useState(0)
 
@@ -52,8 +54,21 @@ export function LiveSessionProvider({ children }: { children: ReactNode }) {
   const micStreamRef = useRef<{ stop: () => void } | null>(null)
   const audioPlayerRef = useRef<AudioPlayer | null>(null)
   const sessionIdRef = useRef<string | null>(null)
+  
+  // 콜백에서 최신 상태 참조를 위한 ref
+  const currentRoutineRef = useRef<Routine | null>(null)
+  const isVideoEnabledRef = useRef(false)
 
   const currentRoutine = routines[currentRoutineIndex] || null
+  
+  // ref 동기화
+  useEffect(() => {
+    currentRoutineRef.current = currentRoutine
+  }, [currentRoutine])
+  
+  useEffect(() => {
+    isVideoEnabledRef.current = isVideoEnabled
+  }, [isVideoEnabled])
 
   const startSession = useCallback(async (userRoutines: Routine[]) => {
     if (!user || !auth?.currentUser) return
@@ -90,35 +105,63 @@ export function LiveSessionProvider({ children }: { children: ReactNode }) {
       // 시스템 프롬프트
       const systemPrompt = `당신은 미라클 모닝 AI 코치입니다. 한국어로 짧고 친절하게 대화하세요.
 
-사용자 루틴: ${userRoutines.map((r, i) => `${i + 1}. ${r.name} (${r.duration}분)`).join(', ')}
+사용자 루틴: ${userRoutines.map((r, i) => `${i + 1}. ${r.name} (${r.duration}분)${r.videoVerification ? ` [비디오 인증: ${r.actionDescription || '행동 확인'}]` : ''}`).join(', ')}
 
 규칙:
 - 1-2문장으로 짧게, 격려하며 대화
 - 루틴 완료/스킵 시 다음 루틴 안내
-- 비디오가 활성화되면 카메라로 사용자의 행동을 관찰
-- 루틴에 맞는 행동을 감지하면 "잘했어요! 완료되었습니다" 같은 완료 메시지 전달
-- 예: 요가 루틴이면 스트레칭 자세, 독서면 책 들고 있는 모습 등을 확인`
+
+비디오 인증 규칙 (매우 중요):
+- 비디오가 활성화된 루틴에서는 카메라로 사용자의 행동을 관찰합니다
+- 사용자가 요청된 행동을 수행하면 반드시 "확인 완료" 또는 "인증 완료"라고 말하세요
+- 예: 손 흔들기 요청 → 손이 보이면 "손이 보여요! 확인 완료!"
+- 예: 스트레칭 요청 → 스트레칭 자세가 보이면 "좋아요! 인증 완료!"
+- 행동이 확인되면 무조건 "완료" 단어를 포함해서 말하세요`
 
       // Gemini Live 세션 연결
       const session = await createLiveSession(tokenData.token, systemPrompt, {
         onOpen: () => setState('wake_up'),
         onMessage: (text) => {
           setAiMessage(text)
-          // 비디오 인식 결과 처리 - 행동 완료 감지
-          if (currentRoutine && isVideoEnabled) {
+          // 디버그: AI 응답 확인
+          console.log('[AI Response]', text)
+          console.log('[Debug] currentRoutineRef:', currentRoutineRef.current?.name)
+          console.log('[Debug] isVideoEnabledRef:', isVideoEnabledRef.current)
+          
+          // 비디오 인식 결과 처리 - 행동 완료 감지 (ref 사용으로 최신 상태 참조)
+          if (currentRoutineRef.current && isVideoEnabledRef.current) {
             const lowerText = text.toLowerCase()
-            // AI가 행동 완료를 인식한 경우
+            console.log('[Debug] Checking keywords in:', lowerText)
+            // AI가 행동 완료를 인식한 경우 - 배지만 표시 (자동 완료 X)
+            // 키워드 확장: 더 많은 인식 패턴 포함
             if (lowerText.includes('완료') || 
+                lowerText.includes('확인') ||
+                lowerText.includes('인증') ||
+                lowerText.includes('보여') ||
+                lowerText.includes('보이') ||
                 lowerText.includes('다 했') || 
                 lowerText.includes('끝났') ||
                 lowerText.includes('잘했') ||
                 lowerText.includes('성공') ||
+                lowerText.includes('좋아') ||
                 lowerText.includes('done') ||
                 lowerText.includes('completed') ||
-                lowerText.includes('finished')) {
-              // 자동 완료 처리
-              completeRoutine('auto')
+                lowerText.includes('finished') ||
+                lowerText.includes('verified') ||
+                lowerText.includes('great') ||
+                lowerText.includes('good') ||
+                lowerText.includes('nice') ||
+                lowerText.includes('see') ||
+                lowerText.includes('hand') ||
+                lowerText.includes('손')) {
+              console.log('[Video Recognition] ✅ Keyword detected, showing badge')
+              // 시각적 피드백만 표시 - 사용자가 직접 체크 버튼 눌러서 완료
+              setVideoRecognized(true)
+            } else {
+              console.log('[Video Recognition] ❌ No keyword matched')
             }
+          } else {
+            console.log('[Debug] Skipped - routine:', !!currentRoutineRef.current, 'video:', isVideoEnabledRef.current)
           }
         },
         onAudio: (data) => audioPlayerRef.current?.enqueue(data),
@@ -160,6 +203,7 @@ export function LiveSessionProvider({ children }: { children: ReactNode }) {
 
     setSessionResults((prev) => [...prev, result])
     setIsAudioEnabled(false) // 루틴 완료 후 마이크 OFF
+    setVideoRecognized(false) // 비디오 인식 상태 리셋
 
     if (currentRoutineIndex < routines.length - 1) {
       setCurrentRoutineIndex((prev) => prev + 1)
@@ -167,6 +211,14 @@ export function LiveSessionProvider({ children }: { children: ReactNode }) {
       // 다음 루틴에 비디오 인증이 필요하면 비디오 활성화 유지, 아니면 비활성화
       const nextRoutine = routines[currentRoutineIndex + 1]
       setIsVideoEnabled(nextRoutine?.videoVerification || false)
+      
+      // AI에게 다음 루틴 정보 알려주기
+      if (liveSessionRef.current?.isConnected()) {
+        const videoInfo = nextRoutine?.videoVerification 
+          ? `비디오 인증이 필요합니다. 행동: ${nextRoutine.actionDescription || '행동 확인'}` 
+          : '비디오 인증 없음'
+        liveSessionRef.current.send(`다음 루틴: "${nextRoutine?.name}" (${nextRoutine?.duration}분). ${videoInfo}`)
+      }
     } else {
       setIsVideoEnabled(false) // 모든 루틴 완료 시 비디오 OFF
       endSession()
@@ -187,13 +239,27 @@ export function LiveSessionProvider({ children }: { children: ReactNode }) {
     }
 
     setSessionResults((prev) => [...prev, result])
+    setVideoRecognized(false) // 비디오 인식 상태 리셋
 
     if (currentRoutineIndex < routines.length - 1) {
-      setCurrentRoutineIndex((prev) => prev + 1)
+      const nextIndex = currentRoutineIndex + 1
+      setCurrentRoutineIndex(nextIndex)
+      
+      // 다음 루틴 비디오 설정
+      const nextRoutine = routines[nextIndex]
+      setIsVideoEnabled(nextRoutine?.videoVerification || false)
+      
+      // AI에게 다음 루틴 정보 알려주기
+      if (liveSessionRef.current?.isConnected()) {
+        const videoInfo = nextRoutine?.videoVerification 
+          ? `비디오 인증이 필요합니다. 행동: ${nextRoutine.actionDescription || '행동 확인'}` 
+          : '비디오 인증 없음'
+        liveSessionRef.current.send(`다음 루틴: "${nextRoutine?.name}" (${nextRoutine?.duration}분). ${videoInfo}`)
+      }
     } else {
       endSession()
     }
-  }, [currentRoutine, currentRoutineIndex, routines.length, endSession])
+  }, [currentRoutine, currentRoutineIndex, routines, endSession])
 
   const extendRoutine = useCallback((minutes: number) => {
     // 타이머 연장 로직 (UI에서 처리)
@@ -225,13 +291,14 @@ export function LiveSessionProvider({ children }: { children: ReactNode }) {
   const handleWakeUp = useCallback(() => {
     setState('routine')
     // 첫 번째 루틴에 비디오 인증이 필요하면 자동으로 비디오 활성화
-    if (currentRoutine?.videoVerification) {
+    const firstRoutine = routines[0]
+    if (firstRoutine?.videoVerification) {
       setIsVideoEnabled(true)
     }
-    if (liveSessionRef.current?.isConnected() && currentRoutine) {
-      liveSessionRef.current.send(`좋은 아침! 첫 번째 루틴 "${currentRoutine.name}"을 시작해볼까요?`)
+    if (liveSessionRef.current?.isConnected() && firstRoutine) {
+      liveSessionRef.current.send(`좋은 아침! 첫 번째 루틴 "${firstRoutine.name}"을 시작해볼까요?`)
     }
-  }, [currentRoutine])
+  }, [routines])
 
   const handleSnooze = useCallback(() => {
     setSnoozeCount((prev) => prev + 1)
@@ -275,6 +342,7 @@ export function LiveSessionProvider({ children }: { children: ReactNode }) {
         aiMessage,
         isAudioEnabled,
         isVideoEnabled,
+        videoRecognized,
         sessionResults,
         snoozeCount,
         startSession,

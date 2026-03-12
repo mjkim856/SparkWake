@@ -40,8 +40,11 @@ export async function createLiveSession(
   systemInstruction: string,
   callbacks: LiveSessionCallbacks
 ): Promise<LiveSession> {
-  // Ephemeral Token으로 클라이언트 생성
-  const ai = new GoogleGenAI({ apiKey: ephemeralToken })
+  // Ephemeral Token으로 클라이언트 생성 (v1alpha API 필수)
+  const ai = new GoogleGenAI({ 
+    apiKey: ephemeralToken,
+    httpOptions: { apiVersion: 'v1alpha' }
+  })
 
   let session: any = null
   let connected = false
@@ -50,32 +53,41 @@ export async function createLiveSession(
     session = await ai.live.connect({
       model: LIVE_MODEL,
       config: {
-        responseModalities: [Modality.AUDIO, Modality.TEXT],
-        systemInstruction: systemInstruction,
-        speechConfig: {
-          voiceConfig: {
-            prebuiltVoiceConfig: {
-              voiceName: 'Aoede', // 친근한 여성 목소리
-            },
-          },
-        },
+        responseModalities: [Modality.AUDIO],
+        outputAudioTranscription: {},  // AI 음성을 텍스트로도 받기
       },
       callbacks: {
         onopen: () => {
-          connected = true
-          callbacks.onOpen?.()
+          // 연결 성공 시에만 로그
         },
         onmessage: (message: any) => {
+          // 디버그 로그 제거 (프로덕션용)
+          
+          // setupComplete 메시지 처리
+          if (message.setupComplete) {
+            connected = true
+            callbacks.onOpen?.()
+            return
+          }
+          
           // 인터럽트 처리
           if (message.serverContent?.interrupted) {
             callbacks.onInterrupted?.()
             return
           }
 
+          // AI 음성 transcription 처리 (outputTranscription)
+          if (message.serverContent?.outputTranscription?.text) {
+            const text = message.serverContent.outputTranscription.text.trim()
+            if (text) {
+              callbacks.onMessage?.(text)
+            }
+          }
+
           // 모델 응답 처리
           if (message.serverContent?.modelTurn?.parts) {
             for (const part of message.serverContent.modelTurn.parts) {
-              // 텍스트 응답
+              // 텍스트 응답 (fallback)
               if (part.text) {
                 // "thinking" 과정 필터링 - 사용자에게 보이지 않도록
                 const text = part.text.trim()
@@ -95,7 +107,7 @@ export async function createLiveSession(
           connected = false
           callbacks.onError?.(new Error(error.message || 'WebSocket error'))
         },
-        onclose: () => {
+        onclose: (event: CloseEvent) => {
           connected = false
           callbacks.onClose?.()
         },
@@ -109,11 +121,10 @@ export async function createLiveSession(
   return {
     send: (text: string) => {
       if (!session || !connected) return
-      session.send({
-        clientContent: {
-          turns: [{ role: 'user', parts: [{ text }] }],
-          turnComplete: true,
-        },
+      // SDK 문서: session.sendClientContent({ turns: [...] })
+      session.sendClientContent({
+        turns: [{ role: 'user', parts: [{ text }] }],
+        turnComplete: true,
       })
     },
     sendAudio: (audioData: ArrayBuffer) => {
@@ -247,7 +258,6 @@ export class AudioPlayer {
       source.onended = () => this.playNext()
       source.start()
     } catch (error) {
-      console.error('Audio playback error:', error)
       this.playNext()
     }
   }

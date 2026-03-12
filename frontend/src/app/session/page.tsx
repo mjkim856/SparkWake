@@ -18,6 +18,7 @@ function SessionContent() {
     currentRoutine,
     currentRoutineIndex,
     isAudioEnabled,
+    videoRecognized,
     sessionResults,
     snoozeCount,
     aiMessage,
@@ -185,18 +186,6 @@ function SessionContent() {
 
       {/* Main Content */}
       <main className="flex-grow flex flex-col p-6 space-y-8">
-        {/* AI Message Display */}
-        {aiMessage && (
-          <div className="bg-gradient-to-r from-[#F5B301]/10 to-[#F5B301]/5 border border-[#F5B301]/20 rounded-2xl p-4 animate-fade-in">
-            <div className="flex items-start gap-3">
-              <div className="w-8 h-8 bg-[#F5B301] rounded-full flex items-center justify-center shrink-0">
-                <span className="material-symbols-outlined text-white text-sm">assistant</span>
-              </div>
-              <p className="text-gray-700 text-sm leading-relaxed">{aiMessage}</p>
-            </div>
-          </div>
-        )}
-
         {/* Wake up view */}
         {state === 'wake_up' && (
           <WakeUpView
@@ -213,6 +202,7 @@ function SessionContent() {
             routineIndex={currentRoutineIndex}
             totalRoutines={routines.length}
             isAudioEnabled={isAudioEnabled}
+            videoRecognized={videoRecognized}
             onComplete={completeRoutine}
             onSkip={skipRoutine}
             onToggleAudio={toggleAudio}
@@ -256,12 +246,22 @@ function SessionContent() {
           >
             <span className="material-icons text-2xl">{isAudioEnabled ? 'mic' : 'mic_off'}</span>
           </button>
-          <button 
-            onClick={() => completeRoutine('manual')}
-            className="w-20 h-20 rounded-full bg-[#F5B301] flex items-center justify-center text-black shadow-lg shadow-[#F5B301]/40 transform hover:scale-105 transition-transform"
-          >
-            <span className="material-icons text-4xl">check</span>
-          </button>
+          {/* 비디오 루틴: videoRecognized가 true여야 활성화 / 일반 루틴: 항상 활성화 */}
+          {currentRoutine?.videoVerification && !videoRecognized ? (
+            <button 
+              disabled
+              className="w-20 h-20 rounded-full bg-gray-300 flex items-center justify-center text-gray-500 cursor-not-allowed"
+            >
+              <span className="material-icons text-4xl">check</span>
+            </button>
+          ) : (
+            <button 
+              onClick={() => completeRoutine('manual')}
+              className="w-20 h-20 rounded-full bg-[#F5B301] flex items-center justify-center text-black shadow-lg shadow-[#F5B301]/40 transform hover:scale-105 transition-transform"
+            >
+              <span className="material-icons text-4xl">check</span>
+            </button>
+          )}
           <button 
             onClick={skipRoutine}
             className="w-14 h-14 rounded-full bg-white border border-gray-200 flex items-center justify-center text-gray-600 hover:bg-gray-50 hover:text-gray-900 transition-colors shadow-sm"
