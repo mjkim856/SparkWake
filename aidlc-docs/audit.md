@@ -239,3 +239,32 @@
 **Build Status**: ✅ 성공
 
 ---
+
+## CONSTRUCTION - FR-8 Code Generation (YouTube Tool Calling)
+**Timestamp**: 2026-03-15T14:00:00Z
+**User Input**: "FR-8 구현을 시작해줘. 구현 계획서: aidlc-docs/construction/plans/fr8-youtube-tool-calling-plan.md"
+**AI Response**: FR-8 AI Tool Calling - YouTube 재생 제어 기능 구현 완료.
+**Artifacts Created/Modified**:
+- frontend/src/types/index.ts (ToolCall, FunctionCall, FunctionResponse 타입 추가)
+- frontend/src/lib/gemini-live.ts (Tool Declaration, onToolCall, sendToolResponse 추가)
+- frontend/src/contexts/LiveSessionContext.tsx (handleToolCall, youtubeVideoId, closeYouTube 추가)
+- frontend/src/components/session/YouTubePlayer.tsx (신규 생성)
+- frontend/src/components/session/RoutineProgressView.tsx (YouTube 조건부 렌더링, 힌트 문구)
+- frontend/src/app/session/page.tsx (새 props 전달)
+**Test Results**:
+- ✅ "영상 틀어줘" 음성 명령 → YouTube 임베드 표시
+- ✅ AI 음성 응답 정상
+- ✅ "완료"/"스킵" 음성 명령 → 루틴 전환
+- ✅ 루틴 YouTube 링크 자동 재생
+- ✅ 빌드 성공
+**Documentation**: aidlc-docs/construction/frontend/code/fr8-youtube-tool-calling-summary.md
+
+---
+
+## CONSTRUCTION - FR-8.12 Code Generation Plan (PIP UI)
+**Timestamp**: 2026-03-15T15:00:00Z
+**AI Response**: FR-8.12 PIP UI 구현 계획 작성 완료.
+**Plan Document**: aidlc-docs/construction/plans/fr8-12-pip-ui-plan.md
+**Approval Prompt**: 아래 계획을 검토하고 승인해 주세요.
+
+---
