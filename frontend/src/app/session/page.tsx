@@ -22,6 +22,8 @@ function SessionContent() {
     sessionResults,
     snoozeCount,
     aiMessage,
+    youtubeVideoId,
+    youtubeError,
     startSession,
     completeRoutine,
     skipRoutine,
@@ -29,6 +31,7 @@ function SessionContent() {
     handleWakeUp,
     handleSnooze,
     sendVideoFrame,
+    closeYouTube,
   } = useLiveSession()
 
   const [routines, setRoutines] = useState<Routine[]>([])
@@ -206,10 +209,13 @@ function SessionContent() {
             totalRoutines={routines.length}
             isAudioEnabled={isAudioEnabled}
             videoRecognized={videoRecognized}
+            youtubeVideoId={youtubeVideoId}
+            youtubeError={youtubeError}
             onComplete={completeRoutine}
             onSkip={skipRoutine}
             onToggleAudio={toggleAudio}
             onVideoFrame={sendVideoFrame}
+            onCloseYouTube={closeYouTube}
           />
         )}
 

@@ -3,7 +3,8 @@
  * 실시간 음성 대화를 위한 WebSocket 연결 관리
  */
 
-import { GoogleGenAI, Modality } from '@google/genai'
+import { GoogleGenAI, Modality, Type } from '@google/genai'
+import type { ToolCall, FunctionResponse } from '@/types'
 
 // Live API 모델 (Native Audio 지원)
 const LIVE_MODEL = 'gemini-2.5-flash-native-audio-preview-12-2025'
@@ -15,6 +16,37 @@ const AUDIO_CONFIG = {
   channelCount: 1,
 }
 
+// Tool Declarations for Function Calling
+const TOOL_DECLARATIONS = [{
+  functionDeclarations: [
+    {
+      name: 'play_youtube',
+      description: '사용자가 요청한 YouTube 영상을 재생합니다. 루틴에 설정된 영상이나 요가/스트레칭 영상을 재생할 때 사용합니다.',
+      parameters: {
+        type: Type.OBJECT,
+        properties: {
+          videoId: {
+            type: Type.STRING,
+            description: 'YouTube 비디오 ID (예: dQw4w9WgXcQ)'
+          },
+          query: {
+            type: Type.STRING,
+            description: '검색어 (videoId가 없을 때 사용, 예: "아침 요가", "morning stretch")'
+          }
+        }
+      }
+    },
+    {
+      name: 'complete_routine',
+      description: '현재 진행 중인 루틴을 완료 처리합니다. 사용자가 "다 했어", "완료", "끝났어" 등을 말하면 호출합니다.'
+    },
+    {
+      name: 'skip_routine',
+      description: '현재 루틴을 건너뜁니다. 사용자가 "스킵", "넘어가", "패스" 등을 말하면 호출합니다.'
+    }
+  ]
+}]
+
 export interface LiveSessionCallbacks {
   onOpen?: () => void
   onMessage?: (text: string) => void
@@ -22,12 +54,14 @@ export interface LiveSessionCallbacks {
   onError?: (error: Error) => void
   onClose?: () => void
   onInterrupted?: () => void
+  onToolCall?: (toolCall: ToolCall) => void
 }
 
 export interface LiveSession {
   send: (text: string) => void
   sendAudio: (audioData: ArrayBuffer) => void
   sendVideo: (imageData: ImageData) => void
+  sendToolResponse: (functionResponses: FunctionResponse[]) => void
   close: () => void
   isConnected: () => boolean
 }
@@ -55,6 +89,8 @@ export async function createLiveSession(
       config: {
         responseModalities: [Modality.AUDIO],
         outputAudioTranscription: {},  // AI 음성을 텍스트로도 받기
+        systemInstruction: systemInstruction,  // 시스템 프롬프트 적용
+        tools: TOOL_DECLARATIONS,  // Function Calling 도구 등록
       },
       callbacks: {
         onopen: () => {
@@ -62,12 +98,25 @@ export async function createLiveSession(
           console.log('[LIVE] Connection opened')
         },
         onmessage: (message: any) => {
-          console.log('[LIVE] Raw message:', JSON.stringify(message).substring(0, 200))
+          console.log('[LIVE] Raw message:', JSON.stringify(message).substring(0, 500))
           
           // setupComplete 메시지 처리
           if (message.setupComplete) {
             connected = true
             callbacks.onOpen?.()
+            return
+          }
+          
+          // Tool Call 처리 (Function Calling)
+          if (message.toolCall) {
+            console.log('[LIVE] ✅ Tool call received:', JSON.stringify(message.toolCall))
+            callbacks.onToolCall?.(message.toolCall)
+            return
+          }
+          
+          // toolCallCancellation 처리
+          if (message.toolCallCancellation) {
+            console.log('[LIVE] Tool call cancelled:', message.toolCallCancellation)
             return
           }
           
@@ -109,7 +158,7 @@ export async function createLiveSession(
           connected = false
           callbacks.onError?.(new Error(error.message || 'WebSocket error'))
         },
-        onclose: (event: CloseEvent) => {
+        onclose: (_event: CloseEvent) => {
           connected = false
           callbacks.onClose?.()
         },
@@ -156,6 +205,11 @@ export async function createLiveSession(
           mimeType: 'image/jpeg',
         },
       })
+    },
+    sendToolResponse: (functionResponses: FunctionResponse[]) => {
+      if (!session || !connected) return
+      console.log('[LIVE] Sending tool response:', JSON.stringify(functionResponses))
+      session.sendToolResponse({ functionResponses })
     },
     close: () => {
       if (session) {
