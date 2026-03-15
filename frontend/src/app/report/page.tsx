@@ -9,13 +9,22 @@ import WeeklyHistory from '@/components/report/WeeklyHistory'
 import CircularProgress from '@/components/report/CircularProgress'
 import type { DailyReport } from '@/types'
 
+// 로컬 YYYY-MM-DD 포맷 헬퍼
+function toLocalDateString(date: Date): string {
+  const year = date.getFullYear()
+  const month = String(date.getMonth() + 1).padStart(2, '0')
+  const day = String(date.getDate()).padStart(2, '0')
+  return `${year}-${month}-${day}`
+}
+
 export default function ReportPage() {
   const router = useRouter()
   const { user } = useAuth()
   const [report, setReport] = useState<DailyReport | null>(null)
   const [weeklyReports, setWeeklyReports] = useState<DailyReport[]>([])
   const [isLoading, setIsLoading] = useState(true)
-  const today = useMemo(() => new Date().toISOString().split('T')[0], [])
+  // 로컬 시간 기준 오늘 날짜 (UTC 변환 방지)
+  const today = useMemo(() => toLocalDateString(new Date()), [])
 
   useEffect(() => {
     if (!user || !db) {
@@ -32,10 +41,11 @@ export default function ReportPage() {
           setReport(todayDoc.data() as DailyReport)
         }
 
-        // 최근 7일 리포트 조회
+        // 최근 7일 리포트 조회 (로컬 시간 기준)
         const sevenDaysAgo = new Date()
+        sevenDaysAgo.setHours(0, 0, 0, 0)
         sevenDaysAgo.setDate(sevenDaysAgo.getDate() - 6)
-        const startDate = sevenDaysAgo.toISOString().split('T')[0]
+        const startDate = toLocalDateString(sevenDaysAgo)
 
         const reportsQuery = query(
           collection(firestore, 'users', user.uid, 'reports'),
@@ -237,7 +247,27 @@ export default function ReportPage() {
                   Listen
                   <span className="text-[10px] bg-slate-200 text-slate-500 px-1.5 py-0.5 rounded-full ml-1">Soon</span>
                 </button>
-                <button className="flex items-center justify-center gap-2 bg-white hover:bg-slate-50 text-slate-700 font-semibold py-2.5 px-4 rounded-xl border border-slate-200 transition-all active:scale-95">
+                <button 
+                  onClick={async () => {
+                    const shareData = {
+                      title: 'My Morning Report',
+                      text: `I completed ${completedCount}/${report.totalRoutines} routines today (${Math.round(completionRate)}%)! 🌅`,
+                      url: window.location.href,
+                    }
+                    try {
+                      if (navigator.share) {
+                        await navigator.share(shareData)
+                      } else {
+                        await navigator.clipboard.writeText(`${shareData.text}\n${shareData.url}`)
+                        alert('Copied to clipboard!')
+                      }
+                    } catch (err) {
+                      console.log('Share cancelled or failed')
+                    }
+                  }}
+                  aria-label="Share"
+                  className="flex items-center justify-center gap-2 bg-white hover:bg-slate-50 text-slate-700 font-semibold py-2.5 px-4 rounded-xl border border-slate-200 transition-all active:scale-95"
+                >
                   <span className="material-symbols-outlined text-xl">share</span>
                 </button>
               </div>
