@@ -9,7 +9,7 @@ from google.cloud import firestore
 from app.models.report import DailyReport, WeeklyReport, AICoaching
 from app.services.auth import get_current_user
 from app.services.firestore import get_firestore_client
-from app.services.gemini import generate_ai_coaching
+from app.services.gemini import generate_ai_coaching, generate_daily_summary
 
 router = APIRouter()
 
@@ -167,3 +167,56 @@ async def get_report_history(
         }
         for doc in docs
     ]
+
+
+@router.post("/generate-summary")
+async def generate_summary(
+    user_id: str = Depends(get_current_user),
+    db: firestore.Client = Depends(get_firestore_client),
+):
+    """
+    FR-9: AI Daily Summary 생성
+    오늘 루틴 결과와 최근 7일 히스토리를 분석하여 개인화된 코칭 메시지 생성
+    """
+    today = datetime.utcnow().strftime("%Y-%m-%d")
+    
+    # 오늘 리포트 조회
+    today_doc = _get_reports_ref(db, user_id).document(today).get()
+    if not today_doc.exists:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Today's report not found",
+        )
+    
+    today_data = today_doc.to_dict()
+    today_results = today_data.get("routine_results", [])
+    
+    # 최근 7일 히스토리 조회 (오늘 제외)
+    start_date = (datetime.utcnow() - timedelta(days=7)).strftime("%Y-%m-%d")
+    reports_ref = _get_reports_ref(db, user_id)
+    history_docs = list(
+        reports_ref
+        .where("date", ">=", start_date)
+        .where("date", "<", today)
+        .order_by("date", direction=firestore.Query.DESCENDING)
+        .stream()
+    )
+    
+    weekly_history = [
+        {
+            "date": doc.id,
+            "completionRate": doc.to_dict().get("completion_rate", 0),
+            "routineResults": doc.to_dict().get("routine_results", []),
+        }
+        for doc in history_docs
+    ]
+    
+    # AI Summary 생성
+    summary = await generate_daily_summary(today_results, weekly_history)
+    
+    # 오늘 리포트에 aiSummary 업데이트
+    _get_reports_ref(db, user_id).document(today).update({
+        "aiSummary": summary,
+    })
+    
+    return {"summary": summary}

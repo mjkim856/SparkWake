@@ -1,6 +1,6 @@
 'use client'
 
-import { useEffect, useState, useMemo } from 'react'
+import { useEffect, useState, useMemo, useRef, useCallback } from 'react'
 import { useRouter } from 'next/navigation'
 import { doc, getDoc, collection, query, where, getDocs, orderBy, limit } from 'firebase/firestore'
 import { db } from '@/lib/firebase'
@@ -8,6 +8,7 @@ import { useAuth } from '@/contexts/AuthContext'
 import WeeklyHistory from '@/components/report/WeeklyHistory'
 import CircularProgress from '@/components/report/CircularProgress'
 import type { DailyReport } from '@/types'
+import html2canvas from 'html2canvas'
 
 // 로컬 YYYY-MM-DD 포맷 헬퍼
 function toLocalDateString(date: Date): string {
@@ -25,6 +26,109 @@ export default function ReportPage() {
   const [isLoading, setIsLoading] = useState(true)
   // 로컬 시간 기준 오늘 날짜 (UTC 변환 방지)
   const today = useMemo(() => toLocalDateString(new Date()), [])
+  
+  // TTS 상태
+  const [isPlaying, setIsPlaying] = useState(false)
+  const [isShareLoading, setIsShareLoading] = useState(false)
+  const reportCardRef = useRef<HTMLDivElement>(null)
+  
+  // TTS 재생/정지
+  const handleListen = useCallback(() => {
+    if (isPlaying) {
+      speechSynthesis.cancel()
+      setIsPlaying(false)
+      return
+    }
+    
+    if (!report) return
+    
+    const completedCount = report.routineResults.filter(r => r.status === 'completed').length
+    const completionRate = Math.round(report.completionRate * 100)
+    
+    const text = report.aiSummary || 
+      `오늘 ${report.totalRoutines}개 루틴 중 ${completedCount}개를 완료했어요. 달성률은 ${completionRate}%입니다. ${
+        completionRate >= 80 
+          ? "정말 잘하고 있어요! 이 기세를 유지해봐요!" 
+          : completionRate >= 50 
+            ? "좋은 진전이에요! 내일은 조금 더 해볼까요?"
+            : "모든 한 걸음이 중요해요. 내일은 새로운 기회예요!"
+      }`
+    
+    const utterance = new SpeechSynthesisUtterance(text)
+    utterance.lang = 'ko-KR'
+    utterance.rate = 0.95
+    utterance.pitch = 1.1
+    
+    utterance.onend = () => setIsPlaying(false)
+    utterance.onerror = () => setIsPlaying(false)
+    
+    setIsPlaying(true)
+    speechSynthesis.speak(utterance)
+  }, [isPlaying, report])
+  
+  // 이미지 캡처 후 공유
+  const handleShare = useCallback(async () => {
+    if (!report) return
+    
+    const completedCount = report.routineResults.filter(r => r.status === 'completed').length
+    const completionRate = Math.round(report.completionRate * 100)
+    const shareText = `🌅 오늘 ${completedCount}/${report.totalRoutines} 루틴 완료! (${completionRate}%) #SparkWake`
+    
+    setIsShareLoading(true)
+    try {
+      // 이미지 캡처 시도
+      let blob: Blob | null = null
+      if (reportCardRef.current) {
+        try {
+          const canvas = await html2canvas(reportCardRef.current, {
+            backgroundColor: '#ffffff',
+            scale: 2,
+            useCORS: true,
+            logging: false,
+          })
+          blob = await new Promise<Blob | null>(resolve => 
+            canvas.toBlob(resolve, 'image/png')
+          )
+        } catch {
+          // 이미지 캡처 실패 시 텍스트만 공유
+          console.warn('Image capture failed, falling back to text share')
+        }
+      }
+      
+      // 이미지 공유 시도
+      if (blob) {
+        const shareData = {
+          title: 'SparkWake Morning Report',
+          text: shareText,
+          files: [new File([blob], 'sparkwake-report.png', { type: 'image/png' })]
+        }
+        
+        if (navigator.canShare?.(shareData)) {
+          await navigator.share(shareData)
+          return
+        }
+      }
+      
+      // 텍스트만 공유
+      const textShareData = {
+        title: 'SparkWake Morning Report',
+        text: shareText,
+        url: window.location.href,
+      }
+      if (navigator.share) {
+        await navigator.share(textShareData)
+      } else {
+        await navigator.clipboard.writeText(`${shareText}\n${window.location.href}`)
+        alert('클립보드에 복사되었어요!')
+      }
+    } catch (err) {
+      if ((err as Error).name !== 'AbortError') {
+        console.error('Share failed:', err)
+      }
+    } finally {
+      setIsShareLoading(false)
+    }
+  }, [report])
 
   useEffect(() => {
     if (!user || !db) {
@@ -226,7 +330,7 @@ export default function ReportPage() {
 
           {/* AI Daily Summary Section */}
           <div className="px-4 py-4">
-            <div className="bg-gradient-to-br from-[#FEF3C7] to-[#FFFBEB] rounded-2xl p-4">
+            <div ref={reportCardRef} className="bg-gradient-to-br from-[#FEF3C7] to-[#FFFBEB] rounded-2xl p-4">
               <div className="flex items-center gap-2 mb-3">
                 <span className="material-symbols-outlined text-[#F5B301]">auto_awesome</span>
                 <h3 className="text-slate-900 font-bold">AI Daily Summary</h3>
@@ -242,36 +346,30 @@ export default function ReportPage() {
               </p>
               <div className="flex gap-2">
                 <button 
-                  disabled
-                  aria-disabled="true"
-                  className="flex-1 flex items-center justify-center gap-2 bg-[#F5B301]/50 text-slate-900/50 font-semibold py-2.5 px-4 rounded-xl opacity-50 cursor-not-allowed"
+                  onClick={handleListen}
+                  aria-label={isPlaying ? "Stop listening" : "Listen to summary"}
+                  className={`flex-1 flex items-center justify-center gap-2 font-semibold py-2.5 px-4 rounded-xl transition-all active:scale-95 ${
+                    isPlaying 
+                      ? 'bg-slate-900 text-white' 
+                      : 'bg-[#F5B301] hover:bg-[#E5A501] text-slate-900'
+                  }`}
                 >
-                  <span className="material-symbols-outlined text-xl">graphic_eq</span>
-                  Listen
-                  <span className="text-[10px] bg-slate-200 text-slate-500 px-1.5 py-0.5 rounded-full ml-1">Soon</span>
+                  <span className="material-symbols-outlined text-xl">
+                    {isPlaying ? 'stop' : 'graphic_eq'}
+                  </span>
+                  {isPlaying ? 'Stop' : 'Listen'}
                 </button>
                 <button 
-                  onClick={async () => {
-                    const shareData = {
-                      title: 'My Morning Report',
-                      text: `I completed ${completedCount}/${report.totalRoutines} routines today (${Math.round(completionRate)}%)! 🌅`,
-                      url: window.location.href,
-                    }
-                    try {
-                      if (navigator.share) {
-                        await navigator.share(shareData)
-                      } else {
-                        await navigator.clipboard.writeText(`${shareData.text}\n${shareData.url}`)
-                        alert('Copied to clipboard!')
-                      }
-                    } catch (err) {
-                      console.log('Share cancelled or failed')
-                    }
-                  }}
-                  aria-label="Share"
-                  className="flex items-center justify-center gap-2 bg-white hover:bg-slate-50 text-slate-700 font-semibold py-2.5 px-4 rounded-xl border border-slate-200 transition-all active:scale-95"
+                  onClick={handleShare}
+                  disabled={isShareLoading}
+                  aria-label="Share report"
+                  className="flex items-center justify-center gap-2 bg-white hover:bg-slate-50 text-slate-700 font-semibold py-2.5 px-4 rounded-xl border border-slate-200 transition-all active:scale-95 disabled:opacity-50"
                 >
-                  <span className="material-symbols-outlined text-xl">share</span>
+                  {isShareLoading ? (
+                    <span className="material-symbols-outlined text-xl animate-spin">progress_activity</span>
+                  ) : (
+                    <span className="material-symbols-outlined text-xl">share</span>
+                  )}
                 </button>
               </div>
             </div>

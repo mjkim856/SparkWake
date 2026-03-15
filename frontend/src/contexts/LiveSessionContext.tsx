@@ -436,6 +436,29 @@ You can use these tools:
       try {
         await setDoc(doc(db, 'users', user.uid, 'reports', today), report)
         console.log('[Report] Saved to Firestore:', today, 'completionRate:', report.completionRate)
+        
+        // FR-9: AI Summary 생성 요청 (백그라운드)
+        try {
+          const currentUser = auth?.currentUser
+          const idToken = currentUser ? await currentUser.getIdToken() : null
+          if (idToken) {
+            const apiUrl = process.env.NEXT_PUBLIC_API_URL || ''
+            const response = await fetch(`${apiUrl}/api/reports/generate-summary`, {
+              method: 'POST',
+              headers: {
+                'Authorization': `Bearer ${idToken}`,
+                'Content-Type': 'application/json',
+              },
+            })
+            if (response.ok) {
+              console.log('[Report] AI Summary generated')
+            }
+          }
+        } catch (summaryError) {
+          // Summary 생성 실패해도 리포트는 저장됨
+          console.warn('[Report] AI Summary generation failed:', summaryError)
+        }
+        
         // 저장 성공 후 상태 전환
         setState('report')
       } catch (error) {
