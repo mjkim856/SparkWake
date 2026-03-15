@@ -396,7 +396,15 @@ You can use these tools:
     return `${hour12}:${String(minutes).padStart(2, '0')} ${period}`
   }
 
-  const endSession = useCallback(async () => {
+  // 로컬 YYYY-MM-DD 포맷 헬퍼 (UTC 변환 방지)
+  const toLocalDateString = useCallback((date: Date): string => {
+    const year = date.getFullYear()
+    const month = String(date.getMonth() + 1).padStart(2, '0')
+    const day = String(date.getDate()).padStart(2, '0')
+    return `${year}-${month}-${day}`
+  }, [])
+
+  const endSession = useCallback(async (lastResult?: RoutineResult) => {
     micStreamRef.current?.stop()
     micStreamRef.current = null
     liveSessionRef.current?.close()
@@ -405,11 +413,15 @@ You can use these tools:
     audioPlayerRef.current = null
     setReportSaveError(null)
 
-    const finalResults = sessionResultsRef.current
+    // 마지막 결과가 있으면 추가
+    const finalResults = lastResult 
+      ? [...sessionResultsRef.current, lastResult]
+      : sessionResultsRef.current
     
     // Firestore에 DailyReport 저장 (await로 완료 대기)
     if (user && db && finalResults.length > 0) {
-      const today = new Date().toISOString().split('T')[0]
+      // 로컬 시간 기준 날짜 (report/page.tsx와 동일한 방식)
+      const today = toLocalDateString(new Date())
       const completedCount = finalResults.filter(r => r.status === 'completed').length
       const skippedCount = finalResults.filter(r => r.status === 'skipped').length
       const totalRoutines = routinesRef.current.length
@@ -435,33 +447,12 @@ You can use these tools:
 
       try {
         await setDoc(doc(db, 'users', user.uid, 'reports', today), report)
-        console.log('[Report] Saved to Firestore:', today, 'completionRate:', report.completionRate)
+        console.log('[Report] Saved to Firestore:', today, 'completionRate:', report.completionRate, 'routines:', finalResults.length)
         
-        // FR-9: AI Summary 생성 요청 (fire-and-forget, 세션 전환 지연 방지)
-        const currentUser = auth?.currentUser
-        if (currentUser) {
-          currentUser.getIdToken().then(idToken => {
-            const apiUrl = process.env.NEXT_PUBLIC_API_URL || ''
-            fetch(`${apiUrl}/api/reports/generate-summary`, {
-              method: 'POST',
-              headers: {
-                'Authorization': `Bearer ${idToken}`,
-                'Content-Type': 'application/json',
-              },
-            })
-              .then(res => {
-                if (res.ok) console.log('[Report] AI Summary generated')
-              })
-              .catch(err => {
-                // Summary 생성 실패해도 리포트는 이미 저장됨
-                console.warn('[Report] AI Summary generation failed:', err)
-              })
-          }).catch(err => {
-            console.warn('[Report] Failed to get token for AI Summary:', err)
-          })
-        }
+        // FR-9: AI Summary 생성 - 비활성화 (Rate Limit 이슈)
+        // fallback 멘트 사용
         
-        // 저장 성공 후 상태 전환 (AI Summary 완료 대기 안 함)
+        // 저장 성공 후 상태 전환
         setState('report')
       } catch (error) {
         console.error('[Report] Failed to save:', error)
@@ -473,7 +464,7 @@ You can use these tools:
       // 저장할 데이터가 없으면 바로 전환
       setState('report')
     }
-  }, [user, snoozeCount])
+  }, [user, snoozeCount, toLocalDateString])
 
 
   const completeRoutine = useCallback((method: 'auto' | 'manual') => {
@@ -538,8 +529,9 @@ Guide the user on the mission action, and say "Mission complete!" when confirmed
         }
       }
     } else {
+      // 마지막 루틴 - 결과를 직접 전달 (state 업데이트 전에 endSession 호출되는 문제 해결)
       setIsVideoEnabled(false)
-      endSession()
+      endSession(result)
     }
   }, [currentRoutine, currentRoutineIndex, routines, endSession])
 
@@ -599,8 +591,9 @@ Guide the user on the mission action, and say "Mission complete!" when confirmed
         }
       }
     } else {
+      // 마지막 루틴 - 결과를 직접 전달
       setIsVideoEnabled(false)
-      endSession()
+      endSession(result)
     }
   }, [currentRoutine, currentRoutineIndex, routines, endSession])
 

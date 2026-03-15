@@ -93,13 +93,12 @@ export default function WeeklyHistory({ reports, currentDate }: WeeklyHistoryPro
                   rate !== null ? colors.bg : 'bg-slate-100'
                 } ${isToday ? 'ring-2 ring-[#F5B301] ring-offset-2' : ''}`}
               >
-                {rate !== null ? (
-                  <span className="text-white text-xs font-bold">
-                    {Math.round(rate * 100)}
-                  </span>
-                ) : (
-                  <span className="text-slate-400 text-xs font-medium">{dayNum}</span>
-                )}
+                {/* 항상 날짜 표시, 리포트 있으면 색상으로 구분 */}
+                <span className={`text-xs font-medium ${
+                  rate !== null ? 'text-white font-bold' : 'text-slate-400'
+                }`}>
+                  {dayNum}
+                </span>
               </div>
               
               {/* Day name */}
