@@ -28,6 +28,7 @@ export default function ReportPage() {
 
   useEffect(() => {
     if (!user || !db) {
+      setReport(null) // stale report 방지
       setIsLoading(false)
       return
     }
@@ -39,6 +40,8 @@ export default function ReportPage() {
         const todayDoc = await getDoc(doc(firestore, 'users', user.uid, 'reports', today))
         if (todayDoc.exists()) {
           setReport(todayDoc.data() as DailyReport)
+        } else {
+          setReport(null) // 오늘 문서 없으면 명시적으로 null 설정
         }
 
         // 최근 7일 리포트 조회 (로컬 시간 기준)
