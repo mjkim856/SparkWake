@@ -2,17 +2,20 @@
 
 import { useEffect, useState } from 'react'
 import { useRouter } from 'next/navigation'
-import { doc, getDoc } from 'firebase/firestore'
+import { doc, getDoc, collection, query, where, getDocs, orderBy, limit } from 'firebase/firestore'
 import { db } from '@/lib/firebase'
 import { useAuth } from '@/contexts/AuthContext'
-import type { DailyReport, AICoaching } from '@/types'
+import WeeklyHistory from '@/components/report/WeeklyHistory'
+import CircularProgress from '@/components/report/CircularProgress'
+import type { DailyReport } from '@/types'
 
 export default function ReportPage() {
   const router = useRouter()
   const { user } = useAuth()
   const [report, setReport] = useState<DailyReport | null>(null)
-  const [coaching, setCoaching] = useState<AICoaching | null>(null)
+  const [weeklyReports, setWeeklyReports] = useState<DailyReport[]>([])
   const [isLoading, setIsLoading] = useState(true)
+  const today = new Date().toISOString().split('T')[0]
 
   useEffect(() => {
     if (!user || !db) {
@@ -21,18 +24,34 @@ export default function ReportPage() {
     }
 
     const firestore = db
-    const loadReport = async () => {
-      const today = new Date().toISOString().split('T')[0]
-      const reportDoc = await getDoc(doc(firestore, 'users', user.uid, 'reports', today))
-
-      if (reportDoc.exists()) {
-        setReport(reportDoc.data() as DailyReport)
+    const loadReports = async () => {
+      // 오늘 리포트 조회
+      const todayDoc = await getDoc(doc(firestore, 'users', user.uid, 'reports', today))
+      if (todayDoc.exists()) {
+        setReport(todayDoc.data() as DailyReport)
       }
+
+      // 최근 7일 리포트 조회
+      const sevenDaysAgo = new Date()
+      sevenDaysAgo.setDate(sevenDaysAgo.getDate() - 6)
+      const startDate = sevenDaysAgo.toISOString().split('T')[0]
+
+      const reportsQuery = query(
+        collection(firestore, 'users', user.uid, 'reports'),
+        where('date', '>=', startDate),
+        orderBy('date', 'desc'),
+        limit(7)
+      )
+      
+      const snapshot = await getDocs(reportsQuery)
+      const reports = snapshot.docs.map(doc => doc.data() as DailyReport)
+      setWeeklyReports(reports)
+
       setIsLoading(false)
     }
 
-    loadReport()
-  }, [user])
+    loadReports()
+  }, [user, today])
 
   if (isLoading) {
     return (
@@ -44,34 +63,58 @@ export default function ReportPage() {
     )
   }
 
-  // Mock data for demo
-  const mockReport: DailyReport = report || {
-    id: 'demo',
-    userId: user?.uid || '',
-    date: new Date().toISOString().split('T')[0],
-    wakeUpTime: '5:30 AM',
-    targetWakeUpTime: '5:30 AM',
-    snoozeCount: 0,
-    totalRoutines: 3,
-    completedRoutines: 3,
-    skippedRoutines: 0,
-    completionRate: 1,
-    routineResults: [
-      { routineId: '1', routineName: 'Meditation', status: 'completed', completionMethod: 'manual', actualDuration: 10, startedAt: null, completedAt: null },
-      { routineId: '2', routineName: 'Journaling', status: 'completed', completionMethod: 'manual', actualDuration: 15, startedAt: null, completedAt: null },
-      { routineId: '3', routineName: 'Exercise', status: 'completed', completionMethod: 'auto', actualDuration: 20, startedAt: null, completedAt: null },
-    ],
-    createdAt: new Date().toISOString(),
+  // Empty State - 리포트가 없을 때
+  if (!report) {
+    return (
+      <div className="min-h-screen bg-slate-50 flex justify-center">
+        <div className="relative flex min-h-screen w-full max-w-md flex-col bg-white overflow-x-hidden shadow-2xl">
+          {/* Header */}
+          <div className="flex items-center p-4 pb-2 justify-between sticky top-0 z-10 bg-white/90 backdrop-blur-md">
+            <button 
+              onClick={() => router.push('/')}
+              className="text-slate-700 flex size-12 shrink-0 items-center justify-center hover:bg-black/5 rounded-full transition-colors"
+            >
+              <span className="material-symbols-outlined text-2xl">arrow_back</span>
+            </button>
+            <h2 className="text-slate-900 text-lg font-bold leading-tight tracking-tight flex-1 text-center pr-12">Daily Report</h2>
+          </div>
+
+          {/* Empty State Content */}
+          <div className="flex-1 flex flex-col px-6 pb-24">
+            {/* Weekly History */}
+            <WeeklyHistory reports={weeklyReports} currentDate={today} />
+            
+            <div className="flex-1 flex flex-col items-center justify-center">
+              <div className="w-24 h-24 bg-slate-100 rounded-full flex items-center justify-center mb-6">
+                <span className="material-symbols-outlined text-slate-400 text-5xl">bar_chart</span>
+              </div>
+              <h3 className="text-slate-900 text-xl font-bold mb-2 text-center">No Report Yet</h3>
+              <p className="text-slate-500 text-center mb-8 max-w-xs">
+                Complete your morning routine to see today&apos;s report. Start a session to begin!
+              </p>
+              <button
+                onClick={() => router.push('/session')}
+                className="flex items-center gap-2 bg-[#F5B301] hover:bg-[#E5A501] text-slate-900 font-bold py-3 px-6 rounded-xl transition-transform active:scale-95 shadow-[0_4px_20px_rgba(244,192,37,0.3)]"
+              >
+                <span className="material-symbols-outlined">play_arrow</span>
+                Start Session
+              </button>
+            </div>
+          </div>
+
+          <BottomNav router={router} />
+        </div>
+      </div>
+    )
   }
 
-  const completionRate = Math.round(mockReport.completionRate * 100)
+  const completionRate = Math.round(report.completionRate * 100)
+  const completedCount = report.routineResults.filter(r => r.status === 'completed').length
+  const skippedCount = report.routineResults.filter(r => r.status === 'skipped').length
   
-  // 실제 데이터 계산
-  const totalActualDuration = mockReport.routineResults.reduce(
+  const totalActualDuration = report.routineResults.reduce(
     (sum, r) => sum + (r.actualDuration || 0), 0
   )
-  const scheduledDuration = mockReport.totalRoutines * 15 // 기본 15분 가정
-  const timeDiff = scheduledDuration - totalActualDuration
   const formatDuration = (mins: number) => mins >= 60 ? `${Math.floor(mins/60)}h ${mins%60}m` : `${mins}m`
 
   return (
@@ -90,125 +133,144 @@ export default function ReportPage() {
 
         {/* Content */}
         <div className="flex-1 overflow-y-auto pb-24">
-          {/* Stats Cards */}
-          <div className="flex flex-wrap gap-3 px-4 py-3">
-            <div className="flex min-w-[100px] flex-1 flex-col gap-2 rounded-xl border-2 border-[#F5B301] bg-white p-4 items-center text-center shadow-md">
-              <p className="text-slate-900 tracking-tight text-3xl font-bold leading-tight">{completionRate}%</p>
-              <p className="text-slate-600 text-xs font-medium uppercase tracking-wider">Success</p>
-            </div>
-            <div className="flex min-w-[100px] flex-1 flex-col gap-2 rounded-xl border border-slate-100 bg-white p-4 items-center text-center shadow-md">
-              <p className="text-slate-900 tracking-tight text-3xl font-bold leading-tight">{mockReport.wakeUpTime?.replace(' AM', '').replace(' PM', '') || '—'}</p>
-              <p className="text-slate-600 text-xs font-medium uppercase tracking-wider">Start Time</p>
-            </div>
-            <div className="flex min-w-[100px] flex-1 flex-col gap-2 rounded-xl border border-slate-100 bg-white p-4 items-center text-center shadow-md">
-              <p className="text-slate-900 tracking-tight text-3xl font-bold leading-tight">{formatDuration(totalActualDuration)}</p>
-              <p className="text-slate-600 text-xs font-medium uppercase tracking-wider">Duration</p>
-            </div>
-          </div>
-
-          {/* Time Efficiency Card */}
-          <div className="px-4 py-4">
-            <div className="flex flex-col gap-4 rounded-xl border border-slate-100 bg-white p-5 shadow-md">
-              <div>
-                <p className="text-slate-900 text-base font-semibold">Time Efficiency</p>
-                <p className="text-slate-500 text-sm mt-1">Scheduled vs Actual Completion</p>
+          {/* Hero Section - Circular Progress */}
+          <div className="flex flex-col items-center py-6 bg-gradient-to-b from-[#FFFBEB] to-white">
+            <CircularProgress percentage={completionRate} size={160} strokeWidth={12} />
+            <div className="flex gap-6 mt-4">
+              <div className="flex items-center gap-2">
+                <div className="w-3 h-3 rounded-full bg-green-500" />
+                <span className="text-sm text-slate-600">{completedCount} Done</span>
               </div>
-              <div className="flex items-baseline gap-2 mt-2">
-                <p className="text-[#F5B301] tracking-tight text-3xl font-bold leading-tight">
-                  {timeDiff >= 0 ? `+${timeDiff}` : timeDiff} mins
-                </p>
-                <p className={`text-sm font-medium px-2 py-0.5 rounded-md ${
-                  timeDiff >= 0 ? 'text-green-600 bg-green-50' : 'text-red-600 bg-red-50'
-                }`}>
-                  {timeDiff >= 0 ? 'Faster than scheduled' : 'Slower than scheduled'}
-                </p>
-              </div>
-              <div className="grid min-h-[160px] grid-flow-col gap-8 grid-rows-[1fr_auto] items-end justify-items-center pt-4">
-                <div className="flex flex-col items-center w-full gap-2" style={{ height: '100%' }}>
-                  <div className="w-16 bg-slate-100 rounded-t-lg relative flex items-end justify-center pb-2 shadow-sm" style={{ height: '80%' }}>
-                    <span className="text-slate-500 text-xs font-semibold absolute -top-6">{formatDuration(scheduledDuration)}</span>
-                  </div>
-                  <p className="text-slate-600 text-xs font-medium">Scheduled</p>
-                </div>
-                <div className="flex flex-col items-center w-full gap-2" style={{ height: '100%' }}>
-                  <div className="w-16 bg-[#F5B301] rounded-t-lg relative flex items-end justify-center pb-2 shadow-md" style={{ height: `${Math.min(100, Math.max(20, (totalActualDuration / scheduledDuration) * 80))}%` }}>
-                    <span className="text-slate-900 text-xs font-bold absolute -top-6">{formatDuration(totalActualDuration)}</span>
-                  </div>
-                  <p className="text-slate-900 text-xs font-bold">Actual</p>
-                </div>
+              <div className="flex items-center gap-2">
+                <div className="w-3 h-3 rounded-full bg-slate-300" />
+                <span className="text-sm text-slate-600">{skippedCount} Skipped</span>
               </div>
             </div>
           </div>
 
-          {/* Routine Verification */}
+          {/* Weekly Progress */}
+          <WeeklyHistory reports={weeklyReports} currentDate={today} />
+
+          {/* Quick Stats */}
+          <div className="flex gap-3 px-4 py-2">
+            <div className="flex-1 bg-slate-50 rounded-xl p-3 text-center">
+              <p className="text-lg font-bold text-slate-900">{report.wakeUpTime || '—'}</p>
+              <p className="text-xs text-slate-500">Start Time</p>
+            </div>
+            <div className="flex-1 bg-slate-50 rounded-xl p-3 text-center">
+              <p className="text-lg font-bold text-slate-900">{formatDuration(totalActualDuration)}</p>
+              <p className="text-xs text-slate-500">Total Time</p>
+            </div>
+            <div className="flex-1 bg-slate-50 rounded-xl p-3 text-center">
+              <p className="text-lg font-bold text-slate-900">{report.totalRoutines}</p>
+              <p className="text-xs text-slate-500">Routines</p>
+            </div>
+          </div>
+
+          {/* Today's Routine Section */}
           <div className="px-4 pt-4 pb-2">
-            <h3 className="text-slate-900 text-lg font-bold leading-tight tracking-tight">Routine Verification</h3>
-            <p className="text-slate-500 text-sm mt-1 mb-4">AI verified activities</p>
-            
-            <div className="flex flex-col gap-3">
-              {mockReport.routineResults.map((result, index) => (
-                <div key={index} className="flex items-start gap-4 p-4 rounded-xl border border-slate-100 bg-white shadow-md">
-                  <div className={`flex items-center justify-center w-10 h-10 rounded-full shrink-0 ${
-                    result.status === 'completed' ? 'bg-green-50 text-green-500' : 'bg-yellow-50 text-[#F5B301]'
-                  }`}>
-                    <span className="material-symbols-outlined">
-                      {result.status === 'completed' ? 'check_circle' : 'warning'}
+            <h3 className="text-slate-900 text-base font-bold mb-3">Today&apos;s Routine</h3>
+            <div className="flex flex-col gap-2">
+              {report.routineResults.map((result, index) => {
+                const isSkipped = result.status === 'skipped'
+                return (
+                  <div 
+                    key={index} 
+                    className={`flex items-center gap-3 p-3 rounded-xl transition-all ${
+                      isSkipped 
+                        ? 'border-2 border-dashed border-slate-200 bg-slate-50/50' 
+                        : 'border border-slate-100 bg-white shadow-sm'
+                    }`}
+                  >
+                    <div className={`flex items-center justify-center w-8 h-8 rounded-full shrink-0 ${
+                      isSkipped ? 'bg-slate-100' : 'bg-green-100'
+                    }`}>
+                      <span className={`material-symbols-outlined text-lg ${
+                        isSkipped ? 'text-slate-400' : 'text-green-500'
+                      }`}>
+                        {isSkipped ? 'remove' : 'check'}
+                      </span>
+                    </div>
+                    <div className="flex-1 min-w-0">
+                      <p className={`font-medium text-sm ${
+                        isSkipped ? 'text-slate-400 line-through' : 'text-slate-900'
+                      }`}>
+                        {result.routineName}
+                      </p>
+                    </div>
+                    <span className={`text-xs ${isSkipped ? 'text-slate-300' : 'text-slate-500'}`}>
+                      {result.actualDuration ? `${result.actualDuration}m` : '—'}
                     </span>
                   </div>
-                  <div className="flex-1 min-w-0">
-                    <div className="flex justify-between items-center mb-1">
-                      <h4 className="text-slate-900 font-semibold text-base truncate">{result.routineName}</h4>
-                      <span className="text-slate-500 text-xs">{result.actualDuration ? `${result.actualDuration}m` : '—'}</span>
-                    </div>
-                    <p className="text-slate-600 text-sm line-clamp-2">
-                      {result.status === 'completed' 
-                        ? 'Activity completed successfully. Good focus detected.'
-                        : 'Activity was skipped or incomplete.'}
-                    </p>
-                  </div>
-                </div>
-              ))}
+                )
+              })}
             </div>
           </div>
 
-          {/* AI Summary Button */}
-          <div className="px-4 py-6 mt-4">
-            <button className="w-full flex items-center justify-center gap-3 bg-[#F5B301] hover:bg-[#E5A501] text-slate-900 font-bold py-4 px-6 rounded-xl transition-transform active:scale-95 shadow-[0_4px_20px_rgba(244,192,37,0.3)]">
-              <span className="material-symbols-outlined text-2xl">graphic_eq</span>
-              Listen to AI Summary
-            </button>
+          {/* AI Daily Summary Section */}
+          <div className="px-4 py-4">
+            <div className="bg-gradient-to-br from-[#FEF3C7] to-[#FFFBEB] rounded-2xl p-4">
+              <div className="flex items-center gap-2 mb-3">
+                <span className="material-symbols-outlined text-[#F5B301]">auto_awesome</span>
+                <h3 className="text-slate-900 font-bold">AI Daily Summary</h3>
+              </div>
+              <p className="text-slate-600 text-sm mb-4">
+                {report.aiSummary || `Great job completing ${completedCount} out of ${report.totalRoutines} routines today! ${
+                  completionRate >= 80 
+                    ? "You're building excellent habits. Keep up the momentum!" 
+                    : completionRate >= 50 
+                      ? "Good progress! Try to complete a few more routines tomorrow."
+                      : "Every step counts. Tomorrow is a new opportunity!"
+                }`}
+              </p>
+              <div className="flex gap-2">
+                <button className="flex-1 flex items-center justify-center gap-2 bg-[#F5B301] hover:bg-[#E5A501] text-slate-900 font-semibold py-2.5 px-4 rounded-xl transition-all active:scale-95">
+                  <span className="material-symbols-outlined text-xl">graphic_eq</span>
+                  Listen
+                </button>
+                <button className="flex items-center justify-center gap-2 bg-white hover:bg-slate-50 text-slate-700 font-semibold py-2.5 px-4 rounded-xl border border-slate-200 transition-all active:scale-95">
+                  <span className="material-symbols-outlined text-xl">share</span>
+                </button>
+              </div>
+            </div>
           </div>
         </div>
 
-        {/* Bottom Navigation */}
-        <div className="flex gap-2 border-t border-slate-100 bg-white px-4 pb-6 pt-2 absolute bottom-0 w-full z-20 shadow-[0_-4px_20px_rgba(0,0,0,0.05)]">
-          <button 
-            onClick={() => router.push('/')}
-            className="flex flex-1 flex-col items-center justify-center gap-1 text-slate-500 hover:text-[#F5B301] transition-colors py-2"
-          >
-            <span className="material-symbols-outlined text-2xl">home</span>
-            <p className="text-[10px] font-medium leading-normal tracking-wide">Home</p>
-          </button>
-          <button 
-            onClick={() => router.push('/session')}
-            className="flex flex-1 flex-col items-center justify-center gap-1 text-slate-500 hover:text-[#F5B301] transition-colors py-2"
-          >
-            <span className="material-symbols-outlined text-2xl">videocam</span>
-            <p className="text-[10px] font-medium leading-normal tracking-wide">Live</p>
-          </button>
-          <button className="flex flex-1 flex-col items-center justify-center gap-1 text-[#F5B301] py-2">
-            <span className="material-symbols-outlined text-2xl" style={{ fontVariationSettings: "'FILL' 1" }}>bar_chart</span>
-            <p className="text-[10px] font-bold leading-normal tracking-wide">Report</p>
-          </button>
-          <button 
-            onClick={() => router.push('/profile')}
-            className="flex flex-1 flex-col items-center justify-center gap-1 text-slate-500 hover:text-[#F5B301] transition-colors py-2"
-          >
-            <span className="material-symbols-outlined text-2xl">person</span>
-            <p className="text-[10px] font-medium leading-normal tracking-wide">Profile</p>
-          </button>
-        </div>
+        <BottomNav router={router} />
       </div>
+    </div>
+  )
+}
+
+// Bottom Navigation Component
+function BottomNav({ router }: { router: ReturnType<typeof useRouter> }) {
+  return (
+    <div className="flex gap-2 border-t border-slate-100 bg-white px-4 pb-6 pt-2 absolute bottom-0 w-full z-20 shadow-[0_-4px_20px_rgba(0,0,0,0.05)]">
+      <button 
+        onClick={() => router.push('/')}
+        className="flex flex-1 flex-col items-center justify-center gap-1 text-slate-500 hover:text-[#F5B301] transition-colors py-2"
+      >
+        <span className="material-symbols-outlined text-2xl">home</span>
+        <p className="text-[10px] font-medium leading-normal tracking-wide">Home</p>
+      </button>
+      <button 
+        onClick={() => router.push('/session')}
+        className="flex flex-1 flex-col items-center justify-center gap-1 text-slate-500 hover:text-[#F5B301] transition-colors py-2"
+      >
+        <span className="material-symbols-outlined text-2xl">videocam</span>
+        <p className="text-[10px] font-medium leading-normal tracking-wide">Live</p>
+      </button>
+      <button className="flex flex-1 flex-col items-center justify-center gap-1 text-[#F5B301] py-2">
+        <span className="material-symbols-outlined text-2xl" style={{ fontVariationSettings: "'FILL' 1" }}>bar_chart</span>
+        <p className="text-[10px] font-bold leading-normal tracking-wide">Report</p>
+      </button>
+      <button 
+        onClick={() => router.push('/profile')}
+        className="flex flex-1 flex-col items-center justify-center gap-1 text-slate-500 hover:text-[#F5B301] transition-colors py-2"
+      >
+        <span className="material-symbols-outlined text-2xl">person</span>
+        <p className="text-[10px] font-medium leading-normal tracking-wide">Profile</p>
+      </button>
     </div>
   )
 }
