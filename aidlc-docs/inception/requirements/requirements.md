@@ -419,19 +419,19 @@ Gemini API가 오늘 루틴 결과와 과거 데이터를 분석하여 개인화
 #### API 설계
 
 ```
-POST /api/generate-summary
-Request:
-{
-  "userId": "string",
-  "todayResults": RoutineResult[],
-  "weeklyHistory": DailyReport[]  // 최근 7일
-}
+POST /api/reports/generate-summary
+Headers:
+  Authorization: Bearer <Firebase ID Token>
+
+Request Body: 없음 (서버에서 인증된 사용자의 리포트 데이터를 직접 조회)
 
 Response:
 {
   "summary": "string"  // Gemini가 생성한 코칭 메시지
 }
 ```
+
+> **Note**: 이 엔드포인트는 인증된 사용자의 오늘 리포트와 최근 7일 히스토리를 서버에서 직접 조회하여 AI Summary를 생성합니다. 클라이언트에서 데이터를 전송할 필요가 없습니다.
 
 #### Gemini 프롬프트 예시
 
@@ -476,8 +476,8 @@ Response:
 | 이미지 공유 | html2canvas |
 
 #### 구현 순서
-1. 백엔드 API 엔드포인트 추가 (`/api/generate-summary`)
+1. 백엔드 API 엔드포인트 추가 (`/api/reports/generate-summary`)
 2. Gemini 프롬프트 설계 및 테스트
-3. LiveSessionContext에서 세션 종료 시 API 호출
+3. LiveSessionContext에서 세션 종료 시 API 호출 (fire-and-forget)
 4. aiSummary를 DailyReport에 포함하여 저장
 5. Report 페이지 UI 연동 (이미 Listen/Share 버튼 구현됨)
