@@ -8,7 +8,7 @@ import { useAuth } from '@/contexts/AuthContext'
 import WeeklyHistory from '@/components/report/WeeklyHistory'
 import CircularProgress from '@/components/report/CircularProgress'
 import type { DailyReport } from '@/types'
-import html2canvas from 'html2canvas'
+import domtoimage from 'dom-to-image-more'
 
 // 로컬 YYYY-MM-DD 포맷 헬퍼
 function toLocalDateString(date: Date): string {
@@ -72,26 +72,30 @@ export default function ReportPage() {
     
     const completedCount = report.routineResults.filter(r => r.status === 'completed').length
     const completionRate = Math.round(report.completionRate * 100)
-    const shareText = `🌅 오늘 ${completedCount}/${report.totalRoutines} 루틴 완료! (${completionRate}%) #SparkWake`
+    
+    // AI Summary 포함한 공유 텍스트
+    const summaryText = report.aiSummary || `Great job completing ${completedCount} out of ${report.totalRoutines} routines today!`
+    const shareText = `🌅 오늘 ${completedCount}/${report.totalRoutines} 루틴 완료! (${completionRate}%)\n\n💬 ${summaryText}\n\n#SparkWake`
     
     setIsShareLoading(true)
     try {
-      // 이미지 캡처 시도
+      // 이미지 캡처 시도 (dom-to-image-more)
       let blob: Blob | null = null
       if (reportCardRef.current) {
         try {
-          const canvas = await html2canvas(reportCardRef.current, {
-            backgroundColor: '#ffffff',
+          blob = await domtoimage.toBlob(reportCardRef.current, {
+            bgcolor: '#ffffff',
             scale: 2,
-            useCORS: true,
-            logging: false,
+            // 외부 스타일시트 에러 무시
+            filter: (node: Node) => {
+              if (node instanceof HTMLLinkElement) {
+                return !node.href?.includes('fonts.googleapis.com')
+              }
+              return true
+            },
           })
-          blob = await new Promise<Blob | null>(resolve => 
-            canvas.toBlob(resolve, 'image/png')
-          )
-        } catch {
-          // 이미지 캡처 실패 시 텍스트만 공유
-          console.warn('Image capture failed, falling back to text share')
+        } catch (e) {
+          console.warn('Image capture failed, falling back to text share', e)
         }
       }
       
@@ -107,6 +111,15 @@ export default function ReportPage() {
           await navigator.share(shareData)
           return
         }
+        
+        // 공유 불가 시 다운로드
+        const url = URL.createObjectURL(blob)
+        const a = document.createElement('a')
+        a.href = url
+        a.download = 'sparkwake-report.png'
+        a.click()
+        URL.revokeObjectURL(url)
+        return
       }
       
       // 텍스트만 공유

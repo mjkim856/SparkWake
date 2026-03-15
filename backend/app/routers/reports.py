@@ -189,7 +189,8 @@ async def generate_summary(
         )
     
     today_data = today_doc.to_dict()
-    today_results = today_data.get("routine_results", [])
+    # camelCase (프론트엔드) 우선, snake_case (레거시) 폴백
+    today_results = today_data.get("routineResults") or today_data.get("routine_results", [])
     
     # 최근 7일 히스토리 조회 (오늘 제외)
     start_date = (datetime.utcnow() - timedelta(days=7)).strftime("%Y-%m-%d")
@@ -202,14 +203,17 @@ async def generate_summary(
         .stream()
     )
     
-    weekly_history = [
-        {
+    weekly_history = []
+    for doc in history_docs:
+        doc_data = doc.to_dict()
+        # camelCase 우선, snake_case 폴백
+        completion_rate = doc_data.get("completionRate") or doc_data.get("completion_rate", 0)
+        routine_results = doc_data.get("routineResults") or doc_data.get("routine_results", [])
+        weekly_history.append({
             "date": doc.id,
-            "completionRate": doc.to_dict().get("completion_rate", 0),
-            "routineResults": doc.to_dict().get("routine_results", []),
-        }
-        for doc in history_docs
-    ]
+            "completionRate": completion_rate,
+            "routineResults": routine_results,
+        })
     
     # AI Summary 생성
     summary = await generate_daily_summary(today_results, weekly_history)

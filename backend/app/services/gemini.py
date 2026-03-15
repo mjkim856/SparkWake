@@ -200,7 +200,7 @@ async def generate_daily_summary(
 메시지만 출력하세요 (JSON 아님):"""
 
     response = await client.aio.models.generate_content(
-        model="gemini-2.0-flash",
+        model="gemini-3-flash-preview",
         contents=prompt,
     )
     
