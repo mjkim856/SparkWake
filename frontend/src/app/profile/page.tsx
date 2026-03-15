@@ -26,16 +26,26 @@ export default function ProfilePage() {
   const [achievements, setAchievements] = useState<Achievement[]>([])
 
   useEffect(() => {
+    // Reset state when user changes to prevent stale data
+    setNickname('')
+    setAchievements([])
+    
     if (!user || !db) return
     
+    let cancelled = false
     const firestore = db
+    
     const loadProfileAndStats = async () => {
       try {
         // Load profile
         const docRef = doc(firestore, 'users', user.uid)
         const docSnap = await getDoc(docRef)
+        if (cancelled) return
+        
         if (docSnap.exists()) {
           setNickname(docSnap.data().nickname || '')
+        } else {
+          setNickname('') // Explicitly clear if doc doesn't exist
         }
 
         // Load reports for achievements
@@ -44,10 +54,12 @@ export default function ProfilePage() {
           orderBy('date', 'desc')
         )
         const snapshot = await getDocs(reportsQuery)
+        if (cancelled) return
+        
         const reports = snapshot.docs.map(doc => doc.data() as DailyReport)
 
         const totalSessions = reports.length
-        const totalRoutines = reports.reduce((sum, r) => sum + r.completedRoutines, 0)
+        const totalRoutines = reports.reduce((sum, r) => sum + (r.completedRoutines ?? 0), 0)
         
         // Calculate streak (compare consecutive report dates, not today - i)
         let bestStreak = 0
@@ -58,7 +70,7 @@ export default function ProfilePage() {
         
         for (let i = 0; i < sortedReports.length; i++) {
           const report = sortedReports[i]
-          const isGoodDay = report.completionRate >= 0.5
+          const isGoodDay = (report.completionRate ?? 0) >= 0.5
           
           if (i === 0) {
             // First report
@@ -83,6 +95,8 @@ export default function ProfilePage() {
         }
         bestStreak = Math.max(bestStreak, tempStreak)
 
+        if (cancelled) return
+        
         // Generate achievements (4 items for grid) - Early Bird always unlocked for demo
         const achievementsList: Achievement[] = [
           { id: 'early_bird', icon: 'wb_sunny', title: 'Early Bird', unlocked: true },
@@ -92,6 +106,7 @@ export default function ProfilePage() {
         ]
         setAchievements(achievementsList)
       } catch (error) {
+        if (cancelled) return
         console.error('Failed to load profile and stats:', error)
         // Set safe defaults on error
         setAchievements([
@@ -103,6 +118,10 @@ export default function ProfilePage() {
       }
     }
     loadProfileAndStats()
+    
+    return () => {
+      cancelled = true
+    }
   }, [user])
 
   const handleSaveNickname = async () => {

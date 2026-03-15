@@ -382,6 +382,19 @@ You can use these tools:
   // 리포트 저장용 ref (최신 sessionResults 참조)
   const sessionResultsRef = useRef<RoutineResult[]>([])
   sessionResultsRef.current = sessionResults
+  
+  // 리포트 저장 에러 상태
+  const [reportSaveError, setReportSaveError] = useState<string | null>(null)
+
+  // HH:mm 포맷을 12시간 포맷으로 변환하는 헬퍼 함수
+  const formatTo12Hour = (time24: string | undefined): string => {
+    if (!time24) return '6:00 AM'
+    const [hours, minutes] = time24.split(':').map(Number)
+    if (isNaN(hours) || isNaN(minutes)) return '6:00 AM'
+    const period = hours >= 12 ? 'PM' : 'AM'
+    const hour12 = hours % 12 || 12
+    return `${hour12}:${String(minutes).padStart(2, '0')} ${period}`
+  }
 
   const endSession = useCallback(async () => {
     micStreamRef.current?.stop()
@@ -390,43 +403,51 @@ You can use these tools:
     liveSessionRef.current = null
     audioPlayerRef.current?.close()
     audioPlayerRef.current = null
+    setReportSaveError(null)
 
-    // 약간의 지연 후 저장 (상태 업데이트 완료 대기)
-    setTimeout(async () => {
-      const finalResults = sessionResultsRef.current
+    const finalResults = sessionResultsRef.current
+    
+    // Firestore에 DailyReport 저장 (await로 완료 대기)
+    if (user && db && finalResults.length > 0) {
+      const today = new Date().toISOString().split('T')[0]
+      const completedCount = finalResults.filter(r => r.status === 'completed').length
+      const skippedCount = finalResults.filter(r => r.status === 'skipped').length
+      const totalRoutines = routinesRef.current.length
       
-      // Firestore에 DailyReport 저장
-      if (user && db && finalResults.length > 0) {
-        const today = new Date().toISOString().split('T')[0]
-        const completedCount = finalResults.filter(r => r.status === 'completed').length
-        const skippedCount = finalResults.filter(r => r.status === 'skipped').length
-        const totalRoutines = routinesRef.current.length
-        
-        const report: DailyReport = {
-          id: today,
-          userId: user.uid,
-          date: today,
-          wakeUpTime: new Date().toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' }),
-          targetWakeUpTime: routinesRef.current[0]?.startTime || '6:00 AM',
-          snoozeCount: snoozeCount,
-          totalRoutines: totalRoutines,
-          completedRoutines: completedCount,
-          skippedRoutines: skippedCount,
-          completionRate: totalRoutines > 0 ? completedCount / totalRoutines : 0,
-          routineResults: finalResults,
-          createdAt: new Date().toISOString(),
-        }
-
-        try {
-          await setDoc(doc(db, 'users', user.uid, 'reports', today), report)
-          console.log('[Report] Saved to Firestore:', today, 'completionRate:', report.completionRate)
-        } catch (error) {
-          console.error('[Report] Failed to save:', error)
-        }
+      // 시간 포맷 통일 (둘 다 12시간 포맷)
+      const wakeUpTime = new Date().toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' })
+      const targetWakeUpTime = formatTo12Hour(routinesRef.current[0]?.startTime)
+      
+      const report: DailyReport = {
+        id: today,
+        userId: user.uid,
+        date: today,
+        wakeUpTime,
+        targetWakeUpTime,
+        snoozeCount: snoozeCount,
+        totalRoutines: totalRoutines,
+        completedRoutines: completedCount,
+        skippedRoutines: skippedCount,
+        completionRate: totalRoutines > 0 ? completedCount / totalRoutines : 0,
+        routineResults: finalResults,
+        createdAt: new Date().toISOString(),
       }
-    }, 100)
 
-    setState('report')
+      try {
+        await setDoc(doc(db, 'users', user.uid, 'reports', today), report)
+        console.log('[Report] Saved to Firestore:', today, 'completionRate:', report.completionRate)
+        // 저장 성공 후 상태 전환
+        setState('report')
+      } catch (error) {
+        console.error('[Report] Failed to save:', error)
+        setReportSaveError('Failed to save report. Please try again.')
+        // 에러 발생해도 report 화면으로 전환 (UI에서 재시도 가능)
+        setState('report')
+      }
+    } else {
+      // 저장할 데이터가 없으면 바로 전환
+      setState('report')
+    }
   }, [user, snoozeCount])
 
 
