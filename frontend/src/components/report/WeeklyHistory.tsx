@@ -25,11 +25,16 @@ function getCompletionColor(rate: number | null): { bg: string; ring: string } {
 const DAY_NAMES = ['S', 'M', 'T', 'W', 'T', 'F', 'S']
 
 export default function WeeklyHistory({ reports, currentDate }: WeeklyHistoryProps) {
-  // 최근 7일 날짜 생성
+  // 최근 7일 날짜 생성 (로컬 시간 기준)
   const days = Array.from({ length: 7 }, (_, i) => {
     const date = new Date()
+    date.setHours(0, 0, 0, 0) // 로컬 자정으로 정규화
     date.setDate(date.getDate() - (6 - i))
-    return date.toISOString().split('T')[0]
+    // 로컬 YYYY-MM-DD 포맷 (toISOString은 UTC라서 사용 안 함)
+    const year = date.getFullYear()
+    const month = String(date.getMonth() + 1).padStart(2, '0')
+    const day = String(date.getDate()).padStart(2, '0')
+    return `${year}-${month}-${day}`
   })
 
   // 날짜별 리포트 매핑
@@ -60,9 +65,12 @@ export default function WeeklyHistory({ reports, currentDate }: WeeklyHistoryPro
           const report = reportMap.get(date)
           const rate = report?.completionRate ?? null
           const colors = getCompletionColor(rate)
-          const dayOfWeek = new Date(date).getDay()
+          // 로컬 시간으로 Date 파싱 (UTC 변환 방지)
+          const [year, month, day] = date.split('-').map(Number)
+          const localDate = new Date(year, month - 1, day)
+          const dayOfWeek = localDate.getDay()
           const isToday = date === currentDate
-          const dayNum = new Date(date).getDate()
+          const dayNum = localDate.getDate()
           
           return (
             <div

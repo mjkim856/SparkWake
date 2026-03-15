@@ -1,6 +1,6 @@
 'use client'
 
-import { useEffect, useState } from 'react'
+import { useEffect, useState, useMemo } from 'react'
 import { useRouter } from 'next/navigation'
 import { doc, getDoc, collection, query, where, getDocs, orderBy, limit } from 'firebase/firestore'
 import { db } from '@/lib/firebase'
@@ -15,7 +15,7 @@ export default function ReportPage() {
   const [report, setReport] = useState<DailyReport | null>(null)
   const [weeklyReports, setWeeklyReports] = useState<DailyReport[]>([])
   const [isLoading, setIsLoading] = useState(true)
-  const today = new Date().toISOString().split('T')[0]
+  const today = useMemo(() => new Date().toISOString().split('T')[0], [])
 
   useEffect(() => {
     if (!user || !db) {
@@ -25,29 +25,33 @@ export default function ReportPage() {
 
     const firestore = db
     const loadReports = async () => {
-      // 오늘 리포트 조회
-      const todayDoc = await getDoc(doc(firestore, 'users', user.uid, 'reports', today))
-      if (todayDoc.exists()) {
-        setReport(todayDoc.data() as DailyReport)
+      try {
+        // 오늘 리포트 조회
+        const todayDoc = await getDoc(doc(firestore, 'users', user.uid, 'reports', today))
+        if (todayDoc.exists()) {
+          setReport(todayDoc.data() as DailyReport)
+        }
+
+        // 최근 7일 리포트 조회
+        const sevenDaysAgo = new Date()
+        sevenDaysAgo.setDate(sevenDaysAgo.getDate() - 6)
+        const startDate = sevenDaysAgo.toISOString().split('T')[0]
+
+        const reportsQuery = query(
+          collection(firestore, 'users', user.uid, 'reports'),
+          where('date', '>=', startDate),
+          orderBy('date', 'desc'),
+          limit(7)
+        )
+        
+        const snapshot = await getDocs(reportsQuery)
+        const reports = snapshot.docs.map(doc => doc.data() as DailyReport)
+        setWeeklyReports(reports)
+      } catch (error) {
+        console.error('Failed to load reports:', error)
+      } finally {
+        setIsLoading(false)
       }
-
-      // 최근 7일 리포트 조회
-      const sevenDaysAgo = new Date()
-      sevenDaysAgo.setDate(sevenDaysAgo.getDate() - 6)
-      const startDate = sevenDaysAgo.toISOString().split('T')[0]
-
-      const reportsQuery = query(
-        collection(firestore, 'users', user.uid, 'reports'),
-        where('date', '>=', startDate),
-        orderBy('date', 'desc'),
-        limit(7)
-      )
-      
-      const snapshot = await getDocs(reportsQuery)
-      const reports = snapshot.docs.map(doc => doc.data() as DailyReport)
-      setWeeklyReports(reports)
-
-      setIsLoading(false)
     }
 
     loadReports()
@@ -224,9 +228,14 @@ export default function ReportPage() {
                 }`}
               </p>
               <div className="flex gap-2">
-                <button className="flex-1 flex items-center justify-center gap-2 bg-[#F5B301] hover:bg-[#E5A501] text-slate-900 font-semibold py-2.5 px-4 rounded-xl transition-all active:scale-95">
+                <button 
+                  disabled
+                  aria-disabled="true"
+                  className="flex-1 flex items-center justify-center gap-2 bg-[#F5B301]/50 text-slate-900/50 font-semibold py-2.5 px-4 rounded-xl opacity-50 cursor-not-allowed"
+                >
                   <span className="material-symbols-outlined text-xl">graphic_eq</span>
                   Listen
+                  <span className="text-[10px] bg-slate-200 text-slate-500 px-1.5 py-0.5 rounded-full ml-1">Soon</span>
                 </button>
                 <button className="flex items-center justify-center gap-2 bg-white hover:bg-slate-50 text-slate-700 font-semibold py-2.5 px-4 rounded-xl border border-slate-200 transition-all active:scale-95">
                   <span className="material-symbols-outlined text-xl">share</span>

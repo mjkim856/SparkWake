@@ -30,59 +30,77 @@ export default function ProfilePage() {
     
     const firestore = db
     const loadProfileAndStats = async () => {
-      // Load profile
-      const docRef = doc(firestore, 'users', user.uid)
-      const docSnap = await getDoc(docRef)
-      if (docSnap.exists()) {
-        setNickname(docSnap.data().nickname || '')
-      }
-
-      // Load reports for achievements
-      const reportsQuery = query(
-        collection(firestore, 'users', user.uid, 'reports'),
-        orderBy('date', 'desc')
-      )
-      const snapshot = await getDocs(reportsQuery)
-      const reports = snapshot.docs.map(doc => doc.data() as DailyReport)
-
-      const totalSessions = reports.length
-      const totalRoutines = reports.reduce((sum, r) => sum + r.completedRoutines, 0)
-      
-      // Calculate streak
-      let bestStreak = 0
-      let tempStreak = 0
-      const today = new Date()
-      
-      for (let i = 0; i < reports.length; i++) {
-        const reportDate = new Date(reports[i].date)
-        const expectedDate = new Date(today)
-        expectedDate.setDate(today.getDate() - i)
-        
-        if (reportDate.toDateString() === expectedDate.toDateString() && reports[i].completionRate >= 0.5) {
-          tempStreak++
-        } else {
-          bestStreak = Math.max(bestStreak, tempStreak)
-          tempStreak = reports[i].completionRate >= 0.5 ? 1 : 0
+      try {
+        // Load profile
+        const docRef = doc(firestore, 'users', user.uid)
+        const docSnap = await getDoc(docRef)
+        if (docSnap.exists()) {
+          setNickname(docSnap.data().nickname || '')
         }
+
+        // Load reports for achievements
+        const reportsQuery = query(
+          collection(firestore, 'users', user.uid, 'reports'),
+          orderBy('date', 'desc')
+        )
+        const snapshot = await getDocs(reportsQuery)
+        const reports = snapshot.docs.map(doc => doc.data() as DailyReport)
+
+        const totalSessions = reports.length
+        const totalRoutines = reports.reduce((sum, r) => sum + r.completedRoutines, 0)
+        
+        // Calculate streak (compare consecutive report dates, not today - i)
+        let bestStreak = 0
+        let tempStreak = 0
+        
+        // Sort reports by date descending (should already be sorted, but ensure)
+        const sortedReports = [...reports].sort((a, b) => b.date.localeCompare(a.date))
+        
+        for (let i = 0; i < sortedReports.length; i++) {
+          const report = sortedReports[i]
+          const isGoodDay = report.completionRate >= 0.5
+          
+          if (i === 0) {
+            // First report
+            tempStreak = isGoodDay ? 1 : 0
+          } else {
+            // Compare with previous report date
+            const [prevYear, prevMonth, prevDay] = sortedReports[i - 1].date.split('-').map(Number)
+            const [currYear, currMonth, currDay] = report.date.split('-').map(Number)
+            const prevDate = new Date(prevYear, prevMonth - 1, prevDay)
+            const currDate = new Date(currYear, currMonth - 1, currDay)
+            
+            // Check if dates are consecutive (1 day apart)
+            const diffDays = Math.round((prevDate.getTime() - currDate.getTime()) / (1000 * 60 * 60 * 24))
+            
+            if (diffDays === 1 && isGoodDay) {
+              tempStreak++
+            } else {
+              bestStreak = Math.max(bestStreak, tempStreak)
+              tempStreak = isGoodDay ? 1 : 0
+            }
+          }
+        }
+        bestStreak = Math.max(bestStreak, tempStreak)
+
+        // Generate achievements (4 items for grid) - Early Bird always unlocked for demo
+        const achievementsList: Achievement[] = [
+          { id: 'early_bird', icon: 'wb_sunny', title: 'Early Bird', unlocked: true },
+          { id: 'power_up', icon: 'bolt', title: 'Power Up', unlocked: totalRoutines >= 10 },
+          { id: 'miracle', icon: 'auto_awesome', title: 'Miracle', unlocked: bestStreak >= 7 },
+          { id: 'zen', icon: 'self_improvement', title: 'Zen', unlocked: totalSessions >= 30 },
+        ]
+        setAchievements(achievementsList)
+      } catch (error) {
+        console.error('Failed to load profile and stats:', error)
+        // Set safe defaults on error
+        setAchievements([
+          { id: 'early_bird', icon: 'wb_sunny', title: 'Early Bird', unlocked: false },
+          { id: 'power_up', icon: 'bolt', title: 'Power Up', unlocked: false },
+          { id: 'miracle', icon: 'auto_awesome', title: 'Miracle', unlocked: false },
+          { id: 'zen', icon: 'self_improvement', title: 'Zen', unlocked: false },
+        ])
       }
-      bestStreak = Math.max(bestStreak, tempStreak)
-
-      // Check early bird
-      const hasEarlyBird = reports.some(r => {
-        const time = r.wakeUpTime
-        if (!time) return false
-        const hour = parseInt(time.split(':')[0])
-        return hour < 7
-      })
-
-      // Generate achievements (4 items for grid) - Early Bird always unlocked for demo
-      const achievementsList: Achievement[] = [
-        { id: 'early_bird', icon: 'wb_sunny', title: 'Early Bird', unlocked: true },
-        { id: 'power_up', icon: 'bolt', title: 'Power Up', unlocked: totalRoutines >= 10 },
-        { id: 'miracle', icon: 'auto_awesome', title: 'Miracle', unlocked: bestStreak >= 7 },
-        { id: 'zen', icon: 'self_improvement', title: 'Zen', unlocked: totalSessions >= 30 },
-      ]
-      setAchievements(achievementsList)
     }
     loadProfileAndStats()
   }, [user])
@@ -306,26 +324,35 @@ export default function ProfilePage() {
         <div className="px-4 py-6">
           <h3 className="text-slate-900 text-lg font-bold leading-tight tracking-tight pb-4">Settings</h3>
           <div className="space-y-1">
-            <button className="w-full flex items-center justify-between py-3 hover:bg-slate-100 rounded-lg px-2 transition-colors">
+            <button 
+              disabled
+              className="w-full flex items-center justify-between py-3 rounded-lg px-2 opacity-50 cursor-not-allowed"
+            >
               <div className="flex items-center gap-3">
-                <span className="material-symbols-outlined text-slate-500">notifications</span>
-                <span className="text-slate-900 font-medium">Notifications</span>
+                <span className="material-symbols-outlined text-slate-400">notifications</span>
+                <span className="text-slate-500 font-medium">Notifications</span>
               </div>
-              <span className="material-symbols-outlined text-slate-400">chevron_right</span>
+              <span className="text-xs text-slate-400 bg-slate-100 px-2 py-1 rounded-full">Coming soon</span>
             </button>
-            <button className="w-full flex items-center justify-between py-3 hover:bg-slate-100 rounded-lg px-2 transition-colors">
+            <button 
+              disabled
+              className="w-full flex items-center justify-between py-3 rounded-lg px-2 opacity-50 cursor-not-allowed"
+            >
               <div className="flex items-center gap-3">
-                <span className="material-symbols-outlined text-slate-500">schedule</span>
-                <span className="text-slate-900 font-medium">Routine Settings</span>
+                <span className="material-symbols-outlined text-slate-400">schedule</span>
+                <span className="text-slate-500 font-medium">Routine Settings</span>
               </div>
-              <span className="material-symbols-outlined text-slate-400">chevron_right</span>
+              <span className="text-xs text-slate-400 bg-slate-100 px-2 py-1 rounded-full">Coming soon</span>
             </button>
-            <button className="w-full flex items-center justify-between py-3 hover:bg-slate-100 rounded-lg px-2 transition-colors">
+            <button 
+              disabled
+              className="w-full flex items-center justify-between py-3 rounded-lg px-2 opacity-50 cursor-not-allowed"
+            >
               <div className="flex items-center gap-3">
-                <span className="material-symbols-outlined text-slate-500">help</span>
-                <span className="text-slate-900 font-medium">Help & Support</span>
+                <span className="material-symbols-outlined text-slate-400">help</span>
+                <span className="text-slate-500 font-medium">Help & Support</span>
               </div>
-              <span className="material-symbols-outlined text-slate-400">chevron_right</span>
+              <span className="text-xs text-slate-400 bg-slate-100 px-2 py-1 rounded-full">Coming soon</span>
             </button>
           </div>
         </div>
