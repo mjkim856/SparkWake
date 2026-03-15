@@ -93,3 +93,20 @@ export type SessionState =
   | 'verification'
   | 'report'
   | 'error'
+
+// Gemini Live API Tool Calling 타입
+export interface ToolCall {
+  functionCalls: FunctionCall[]
+}
+
+export interface FunctionCall {
+  id: string
+  name: string
+  args: Record<string, unknown>
+}
+
+export interface FunctionResponse {
+  id: string
+  name: string
+  response: { result: string }
+}
