@@ -10,6 +10,13 @@ import { WakeUpView } from '@/components/session/WakeUpView'
 import { RoutineProgressView } from '@/components/session/RoutineProgressView'
 import type { Routine } from '@/types'
 
+/**
+ * Renders the session UI, loads the authenticated user's routines from Firestore on mount, and drives the live session flow.
+ *
+ * The component fetches routines for the current user and starts the live session when routines are available. It renders appropriate UI for loading, empty state, wake-up, routine/progress, connecting, error, and final report states, and wires user interactions (complete, skip, toggle audio, snooze, video frames, and closing YouTube) to the live session handlers.
+ *
+ * @returns The JSX element representing the session content and controls.
+ */
 function SessionContent() {
   const router = useRouter()
   const { user, isLoading: authLoading } = useAuth()
@@ -22,6 +29,7 @@ function SessionContent() {
     sessionResults,
     snoozeCount,
     aiMessage,
+    youtubeVideoId,
     startSession,
     completeRoutine,
     skipRoutine,
@@ -29,6 +37,7 @@ function SessionContent() {
     handleWakeUp,
     handleSnooze,
     sendVideoFrame,
+    closeYouTube,
   } = useLiveSession()
 
   const [routines, setRoutines] = useState<Routine[]>([])
@@ -206,10 +215,12 @@ function SessionContent() {
             totalRoutines={routines.length}
             isAudioEnabled={isAudioEnabled}
             videoRecognized={videoRecognized}
+            youtubeVideoId={youtubeVideoId}
             onComplete={completeRoutine}
             onSkip={skipRoutine}
             onToggleAudio={toggleAudio}
             onVideoFrame={sendVideoFrame}
+            onCloseYouTube={closeYouTube}
           />
         )}
 
