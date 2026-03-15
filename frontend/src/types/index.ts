@@ -64,6 +64,7 @@ export interface DailyReport {
   skippedRoutines: number
   completionRate: number
   routineResults: RoutineResult[]
+  aiSummary?: string
   createdAt: string
 }
 

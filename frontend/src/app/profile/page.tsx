@@ -2,13 +2,19 @@
 
 import { useState, useEffect } from 'react'
 import { useRouter } from 'next/navigation'
-import { doc, getDoc, setDoc } from 'firebase/firestore'
+import { doc, getDoc, setDoc, collection, query, getDocs, orderBy } from 'firebase/firestore'
 import { GoogleAuthProvider, linkWithPopup, signOut } from 'firebase/auth'
 import { db, auth } from '@/lib/firebase'
 import { useAuth } from '@/contexts/AuthContext'
-import { Button } from '@/components/ui/button'
-import { Input } from '@/components/ui/input'
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
+import type { DailyReport } from '@/types'
+
+// Achievement type
+interface Achievement {
+  id: string
+  icon: string
+  title: string
+  unlocked: boolean
+}
 
 export default function ProfilePage() {
   const router = useRouter()
@@ -17,19 +23,86 @@ export default function ProfilePage() {
   const [isEditing, setIsEditing] = useState(false)
   const [isSaving, setIsSaving] = useState(false)
   const [isLinking, setIsLinking] = useState(false)
+  const [achievements, setAchievements] = useState<Achievement[]>([])
 
   useEffect(() => {
     if (!user || !db) return
     
     const firestore = db
-    const loadProfile = async () => {
-      const docRef = doc(firestore, 'users', user.uid)
-      const docSnap = await getDoc(docRef)
-      if (docSnap.exists()) {
-        setNickname(docSnap.data().nickname || '')
+    const loadProfileAndStats = async () => {
+      try {
+        // Load profile
+        const docRef = doc(firestore, 'users', user.uid)
+        const docSnap = await getDoc(docRef)
+        if (docSnap.exists()) {
+          setNickname(docSnap.data().nickname || '')
+        }
+
+        // Load reports for achievements
+        const reportsQuery = query(
+          collection(firestore, 'users', user.uid, 'reports'),
+          orderBy('date', 'desc')
+        )
+        const snapshot = await getDocs(reportsQuery)
+        const reports = snapshot.docs.map(doc => doc.data() as DailyReport)
+
+        const totalSessions = reports.length
+        const totalRoutines = reports.reduce((sum, r) => sum + r.completedRoutines, 0)
+        
+        // Calculate streak (compare consecutive report dates, not today - i)
+        let bestStreak = 0
+        let tempStreak = 0
+        
+        // Sort reports by date descending (should already be sorted, but ensure)
+        const sortedReports = [...reports].sort((a, b) => b.date.localeCompare(a.date))
+        
+        for (let i = 0; i < sortedReports.length; i++) {
+          const report = sortedReports[i]
+          const isGoodDay = report.completionRate >= 0.5
+          
+          if (i === 0) {
+            // First report
+            tempStreak = isGoodDay ? 1 : 0
+          } else {
+            // Compare with previous report date
+            const [prevYear, prevMonth, prevDay] = sortedReports[i - 1].date.split('-').map(Number)
+            const [currYear, currMonth, currDay] = report.date.split('-').map(Number)
+            const prevDate = new Date(prevYear, prevMonth - 1, prevDay)
+            const currDate = new Date(currYear, currMonth - 1, currDay)
+            
+            // Check if dates are consecutive (1 day apart)
+            const diffDays = Math.round((prevDate.getTime() - currDate.getTime()) / (1000 * 60 * 60 * 24))
+            
+            if (diffDays === 1 && isGoodDay) {
+              tempStreak++
+            } else {
+              bestStreak = Math.max(bestStreak, tempStreak)
+              tempStreak = isGoodDay ? 1 : 0
+            }
+          }
+        }
+        bestStreak = Math.max(bestStreak, tempStreak)
+
+        // Generate achievements (4 items for grid) - Early Bird always unlocked for demo
+        const achievementsList: Achievement[] = [
+          { id: 'early_bird', icon: 'wb_sunny', title: 'Early Bird', unlocked: true },
+          { id: 'power_up', icon: 'bolt', title: 'Power Up', unlocked: totalRoutines >= 10 },
+          { id: 'miracle', icon: 'auto_awesome', title: 'Miracle', unlocked: bestStreak >= 7 },
+          { id: 'zen', icon: 'self_improvement', title: 'Zen', unlocked: totalSessions >= 30 },
+        ]
+        setAchievements(achievementsList)
+      } catch (error) {
+        console.error('Failed to load profile and stats:', error)
+        // Set safe defaults on error
+        setAchievements([
+          { id: 'early_bird', icon: 'wb_sunny', title: 'Early Bird', unlocked: false },
+          { id: 'power_up', icon: 'bolt', title: 'Power Up', unlocked: false },
+          { id: 'miracle', icon: 'auto_awesome', title: 'Miracle', unlocked: false },
+          { id: 'zen', icon: 'self_improvement', title: 'Zen', unlocked: false },
+        ])
       }
     }
-    loadProfile()
+    loadProfileAndStats()
   }, [user])
 
   const handleSaveNickname = async () => {
@@ -79,155 +152,248 @@ export default function ProfilePage() {
     }
   }
 
+  // Generate avatar URL using DiceBear (thumbs style - cute emoji faces)
+  const avatarUrl = user ? `https://api.dicebear.com/7.x/thumbs/svg?seed=${user.uid}&backgroundColor=fef3c7` : ''
+
   if (!user) {
     return (
-      <div className="min-h-screen bg-[#F9FAFB] flex items-center justify-center">
-        <p className="text-gray-500">Please sign in to view your profile.</p>
+      <div className="min-h-screen bg-[#f8f8f5] flex items-center justify-center">
+        <p className="text-slate-500">Please sign in to view your profile.</p>
       </div>
     )
   }
 
   return (
-    <div className="min-h-screen bg-[#F9FAFB]">
-      {/* Header */}
-      <header className="bg-white border-b border-gray-100 px-4 py-4">
-        <div className="flex items-center gap-3">
-          <button onClick={() => router.back()} className="text-gray-600">
+    <div className="min-h-screen bg-[#f8f8f5] flex justify-center">
+      <div className="relative flex min-h-screen w-full max-w-md flex-col bg-[#f8f8f5] overflow-x-hidden">
+        {/* Header */}
+        <div className="flex items-center p-4 pb-2 justify-between">
+          <button 
+            onClick={() => router.back()}
+            className="text-slate-900 flex size-12 shrink-0 items-center justify-center"
+          >
             <span className="material-symbols-outlined">arrow_back</span>
           </button>
-          <h1 className="text-xl font-bold">Profile</h1>
+          <h2 className="text-slate-900 text-lg font-bold leading-tight tracking-tight flex-1 text-center">Profile</h2>
+          <div className="w-12" />
         </div>
-      </header>
 
-      <main className="p-4 space-y-4 max-w-md mx-auto">
-        {/* Profile Card */}
-        <Card className="shadow-spark">
-          <CardHeader>
-            <CardTitle className="flex items-center gap-3">
-              <div className="w-12 h-12 bg-spark-gradient rounded-full flex items-center justify-center">
-                <span className="material-symbols-outlined text-white text-2xl">person</span>
+        {/* Profile Section */}
+        <div className="flex p-4">
+          <div className="flex w-full flex-col gap-4 items-center">
+            <div className="flex gap-4 flex-col items-center">
+              {/* Avatar with DiceBear */}
+              <div className="w-32 h-32 rounded-full border-4 border-[#F5B301]/20 overflow-hidden bg-[#F5B301]/10">
+                <img 
+                  src={avatarUrl} 
+                  alt="Profile avatar"
+                  className="w-full h-full object-cover"
+                />
               </div>
-              <div>
-                <p className="text-lg font-bold">{nickname || 'No nickname'}</p>
-                <p className="text-sm text-muted-foreground">{user.email || 'Anonymous user'}</p>
-              </div>
-            </CardTitle>
-          </CardHeader>
-          <CardContent className="space-y-4">
-            {/* Nickname Edit */}
-            <div>
-              <label className="block text-sm font-medium mb-2">Nickname</label>
-              {isEditing ? (
-                <div className="flex gap-2">
-                  <Input
-                    value={nickname}
-                    onChange={(e) => setNickname(e.target.value)}
-                    placeholder="Enter nickname"
-                    maxLength={20}
-                  />
-                  <Button onClick={handleSaveNickname} disabled={isSaving}>
-                    {isSaving ? 'Saving...' : 'Save'}
-                  </Button>
-                  <Button variant="ghost" onClick={() => setIsEditing(false)}>
-                    Cancel
-                  </Button>
-                </div>
-              ) : (
-                <div className="flex items-center justify-between">
-                  <span className="text-gray-700">{nickname || 'Not set'}</span>
-                  <Button variant="outline" size="sm" onClick={() => setIsEditing(true)}>
-                    Edit
-                  </Button>
-                </div>
-              )}
-            </div>
-
-            {/* Email */}
-            <div>
-              <label className="block text-sm font-medium mb-2">Email</label>
-              <p className="text-gray-700">{user.email || 'No email (Anonymous)'}</p>
-            </div>
-
-            {/* Account Type */}
-            <div>
-              <label className="block text-sm font-medium mb-2">Account Type</label>
-              <p className="text-gray-700">
-                {user.isAnonymous ? (
-                  <span className="inline-flex items-center gap-1 text-amber-600">
-                    <span className="material-symbols-outlined text-sm">warning</span>
-                    Guest Account
-                  </span>
+              <div className="flex flex-col items-center justify-center">
+                {isEditing ? (
+                  <div className="flex flex-col items-center gap-2">
+                    <input
+                      type="text"
+                      value={nickname}
+                      onChange={(e) => setNickname(e.target.value)}
+                      placeholder="Enter nickname"
+                      maxLength={20}
+                      className="text-center text-[22px] font-bold text-slate-900 border-b-2 border-[#F5B301] bg-transparent outline-none py-1"
+                      autoFocus
+                    />
+                    <div className="flex gap-2">
+                      <button 
+                        onClick={handleSaveNickname} 
+                        disabled={isSaving}
+                        className="px-4 py-1.5 bg-[#F5B301] text-slate-900 font-semibold rounded-lg text-sm"
+                      >
+                        {isSaving ? 'Saving...' : 'Save'}
+                      </button>
+                      <button 
+                        onClick={() => setIsEditing(false)}
+                        className="px-4 py-1.5 bg-slate-200 text-slate-600 font-semibold rounded-lg text-sm"
+                      >
+                        Cancel
+                      </button>
+                    </div>
+                  </div>
                 ) : (
-                  <span className="inline-flex items-center gap-1 text-green-600">
-                    <span className="material-symbols-outlined text-sm">check_circle</span>
+                  <>
+                    <p className="text-slate-900 text-[22px] font-bold leading-tight tracking-tight text-center">
+                      {nickname || 'Set Nickname'}
+                    </p>
+                    <p className="text-slate-500 text-base font-normal text-center">
+                      {user.isAnonymous ? 'Anonymous user' : user.email}
+                    </p>
+                  </>
+                )}
+              </div>
+            </div>
+            {!isEditing && (
+              <button 
+                onClick={() => setIsEditing(true)}
+                className="flex min-w-[120px] items-center justify-center rounded-full h-10 px-6 bg-[#F5B301]/10 text-slate-900 text-sm font-bold hover:bg-[#F5B301]/20 transition-colors"
+              >
+                Edit Profile
+              </button>
+            )}
+          </div>
+        </div>
+
+        {/* Account Details Section */}
+        <div className="px-4 py-4">
+          <h3 className="text-slate-900 text-lg font-bold leading-tight tracking-tight pb-4">Account Details</h3>
+          <div className="bg-white rounded-xl p-4 shadow-sm space-y-4">
+            <div className="flex justify-between items-center border-b border-slate-100 pb-3">
+              <p className="text-slate-500 text-sm font-medium">Title</p>
+              <p className="text-slate-900 text-sm font-semibold">
+                {user.isAnonymous ? 'Anonymous user' : 'Member'}
+              </p>
+            </div>
+            <div className="flex justify-between items-center border-b border-slate-100 pb-3">
+              <p className="text-slate-500 text-sm font-medium">Email</p>
+              <p className="text-slate-900 text-sm font-semibold">
+                {user.email || 'No email (Anonymous)'}
+              </p>
+            </div>
+            <div className="flex justify-between items-center pb-1">
+              <p className="text-slate-500 text-sm font-medium">Account Type</p>
+              <p className="text-slate-900 text-sm font-semibold flex items-center gap-1">
+                {user.isAnonymous ? (
+                  <>
+                    <span className="material-symbols-outlined text-amber-500 text-sm">warning</span>
+                    Guest Account
+                  </>
+                ) : (
+                  <>
+                    <span className="material-symbols-outlined text-green-500 text-sm">verified</span>
                     Google Account
-                  </span>
+                  </>
                 )}
               </p>
             </div>
-          </CardContent>
-        </Card>
-
-        {/* Link Google Account (for anonymous users) */}
-        {user.isAnonymous && (
-          <Card>
-            <CardContent className="pt-6">
-              <div className="text-center space-y-3">
-                <p className="text-sm text-muted-foreground">
-                  Link your Google account to save your data permanently
-                </p>
-                <Button 
-                  onClick={handleLinkGoogle} 
+            
+            {/* Link Google Account (for anonymous users) */}
+            {user.isAnonymous && (
+              <div className="pt-4 space-y-3">
+                <div className="bg-[#F5B301]/5 rounded-lg p-3 text-center">
+                  <p className="text-slate-600 text-xs leading-relaxed">
+                    Link your Google account to save your data permanently and sync across devices.
+                  </p>
+                </div>
+                <button 
+                  onClick={handleLinkGoogle}
                   disabled={isLinking}
-                  className="w-full"
-                  variant="outline"
+                  className="w-full flex items-center justify-center gap-2 bg-[#F5B301] text-slate-900 font-bold py-3 rounded-lg shadow-sm hover:opacity-90 transition-opacity"
                 >
-                  <span className="material-symbols-outlined mr-2">link</span>
+                  <span className="material-symbols-outlined">link</span>
                   {isLinking ? 'Linking...' : 'Link Google Account'}
-                </Button>
+                </button>
               </div>
-            </CardContent>
-          </Card>
-        )}
+            )}
+          </div>
+        </div>
 
-        {/* Logout */}
-        <Button 
-          onClick={handleLogout} 
-          variant="destructive" 
-          className="w-full"
-        >
-          <span className="material-symbols-outlined mr-2">logout</span>
-          Logout
-        </Button>
-      </main>
+        {/* Achievements Section */}
+        <div className="px-4 py-6">
+          <h3 className="text-slate-900 text-lg font-bold leading-tight tracking-tight pb-4">Achievements</h3>
+          <div className="grid grid-cols-4 gap-4">
+            {achievements.map((achievement) => (
+              <div key={achievement.id} className={`flex flex-col items-center gap-2 ${!achievement.unlocked ? 'opacity-40' : ''}`}>
+                <div className={`w-14 h-14 rounded-full flex items-center justify-center ${
+                  achievement.unlocked 
+                    ? 'bg-[#F5B301]/20 text-[#F5B301] border-2 border-[#F5B301]' 
+                    : 'bg-slate-200 text-slate-400'
+                }`}>
+                  <span className="material-symbols-outlined text-3xl">
+                    {achievement.unlocked ? achievement.icon : 'lock'}
+                  </span>
+                </div>
+                <p className={`text-[10px] font-bold text-center uppercase tracking-wider ${
+                  achievement.unlocked ? 'text-slate-500' : 'text-slate-400'
+                }`}>
+                  {achievement.title}
+                </p>
+              </div>
+            ))}
+          </div>
+        </div>
 
-      {/* Bottom Navigation */}
-      <div className="fixed bottom-0 left-0 right-0 bg-white border-t border-gray-100 pb-safe">
-        <div className="flex justify-around items-center h-16 max-w-md mx-auto">
+        {/* Settings Section */}
+        <div className="px-4 py-6">
+          <h3 className="text-slate-900 text-lg font-bold leading-tight tracking-tight pb-4">Settings</h3>
+          <div className="space-y-1">
+            <button 
+              disabled
+              className="w-full flex items-center justify-between py-3 rounded-lg px-2 opacity-50 cursor-not-allowed"
+            >
+              <div className="flex items-center gap-3">
+                <span className="material-symbols-outlined text-slate-400">notifications</span>
+                <span className="text-slate-500 font-medium">Notifications</span>
+              </div>
+              <span className="text-xs text-slate-400 bg-slate-100 px-2 py-1 rounded-full">Coming soon</span>
+            </button>
+            <button 
+              disabled
+              className="w-full flex items-center justify-between py-3 rounded-lg px-2 opacity-50 cursor-not-allowed"
+            >
+              <div className="flex items-center gap-3">
+                <span className="material-symbols-outlined text-slate-400">schedule</span>
+                <span className="text-slate-500 font-medium">Routine Settings</span>
+              </div>
+              <span className="text-xs text-slate-400 bg-slate-100 px-2 py-1 rounded-full">Coming soon</span>
+            </button>
+            <button 
+              disabled
+              className="w-full flex items-center justify-between py-3 rounded-lg px-2 opacity-50 cursor-not-allowed"
+            >
+              <div className="flex items-center gap-3">
+                <span className="material-symbols-outlined text-slate-400">help</span>
+                <span className="text-slate-500 font-medium">Help & Support</span>
+              </div>
+              <span className="text-xs text-slate-400 bg-slate-100 px-2 py-1 rounded-full">Coming soon</span>
+            </button>
+          </div>
+        </div>
+
+        {/* Logout Button */}
+        <div className="px-4 py-4 pb-24">
+          <button 
+            onClick={handleLogout}
+            className="w-full flex items-center justify-center gap-2 py-4 text-rose-500 font-bold hover:bg-rose-50 rounded-lg transition-colors"
+          >
+            <span className="material-symbols-outlined">logout</span>
+            Logout
+          </button>
+        </div>
+
+        {/* Bottom Navigation */}
+        <div className="fixed bottom-0 left-0 right-0 flex border-t border-slate-200 bg-[#f8f8f5] px-4 pb-6 pt-2 z-50 max-w-md mx-auto">
           <button 
             onClick={() => router.push('/')}
-            className="flex flex-1 flex-col items-center justify-center gap-1 text-slate-500 hover:text-[#F5B301] transition-colors py-2"
+            className="flex flex-1 flex-col items-center justify-end gap-1 text-slate-400"
           >
-            <span className="material-symbols-outlined text-2xl">home</span>
+            <span className="material-symbols-outlined">home</span>
             <p className="text-[10px] font-medium leading-normal tracking-wide">Home</p>
           </button>
           <button 
             onClick={() => router.push('/session')}
-            className="flex flex-1 flex-col items-center justify-center gap-1 text-slate-500 hover:text-[#F5B301] transition-colors py-2"
+            className="flex flex-1 flex-col items-center justify-end gap-1 text-slate-400"
           >
-            <span className="material-symbols-outlined text-2xl">videocam</span>
+            <span className="material-symbols-outlined">videocam</span>
             <p className="text-[10px] font-medium leading-normal tracking-wide">Live</p>
           </button>
           <button 
             onClick={() => router.push('/report')}
-            className="flex flex-1 flex-col items-center justify-center gap-1 text-slate-500 hover:text-[#F5B301] transition-colors py-2"
+            className="flex flex-1 flex-col items-center justify-end gap-1 text-slate-400"
           >
-            <span className="material-symbols-outlined text-2xl">bar_chart</span>
+            <span className="material-symbols-outlined">bar_chart</span>
             <p className="text-[10px] font-medium leading-normal tracking-wide">Report</p>
           </button>
-          <button className="flex flex-1 flex-col items-center justify-center gap-1 text-[#F5B301] py-2">
-            <span className="material-symbols-outlined text-2xl" style={{ fontVariationSettings: "'FILL' 1" }}>person</span>
-            <p className="text-[10px] font-bold leading-normal tracking-wide">Profile</p>
+          <button className="flex flex-1 flex-col items-center justify-end gap-1 text-[#F5B301]">
+            <span className="material-symbols-outlined" style={{ fontVariationSettings: "'FILL' 1" }}>person</span>
+            <p className="text-[10px] font-medium leading-normal tracking-wide">Profile</p>
           </button>
         </div>
       </div>

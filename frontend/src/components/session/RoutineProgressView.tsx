@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useCallback } from 'react'
+import { useState, useCallback, useEffect } from 'react'
 import { Timer } from './Timer'
 import { CameraPreview } from './CameraPreview'
 import { YouTubePlayer } from './YouTubePlayer'
@@ -42,6 +42,11 @@ export function RoutineProgressView({
   onCloseYouTube,
 }: RoutineProgressViewProps) {
   const [isTimerComplete, setIsTimerComplete] = useState(false)
+  
+  // 루틴이 바뀔 때 타이머 완료 상태 리셋
+  useEffect(() => {
+    setIsTimerComplete(false)
+  }, [routine.id, routineIndex])
   
   const routineHasYouTube = hasYouTubeLink(routine.link)
   const isWaitingForYouTube = routineHasYouTube && !youtubeVideoId && !youtubeError
@@ -183,6 +188,7 @@ export function RoutineProgressView({
             </div>
           </div>
           <Timer
+            key={`timer-${routine.id}-${routineIndex}`}
             duration={routine.duration * 60}
             onComplete={handleTimerComplete}
           />
