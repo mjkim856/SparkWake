@@ -3,6 +3,7 @@
 import { useState, useCallback } from 'react'
 import { Timer } from './Timer'
 import { CameraPreview } from './CameraPreview'
+import { YouTubePlayer } from './YouTubePlayer'
 import type { Routine } from '@/types'
 
 interface RoutineProgressViewProps {
@@ -11,10 +12,12 @@ interface RoutineProgressViewProps {
   totalRoutines: number
   isAudioEnabled: boolean
   videoRecognized?: boolean
+  youtubeVideoId?: string | null
   onComplete: (method: 'auto' | 'manual') => void
   onSkip: () => void
   onToggleAudio: () => void
   onVideoFrame?: (frame: ImageData) => void
+  onCloseYouTube?: () => void
 }
 
 export function RoutineProgressView({
@@ -23,10 +26,12 @@ export function RoutineProgressView({
   totalRoutines,
   isAudioEnabled,
   videoRecognized,
+  youtubeVideoId,
   onComplete,
   onSkip,
   onToggleAudio,
   onVideoFrame,
+  onCloseYouTube,
 }: RoutineProgressViewProps) {
   const [isTimerComplete, setIsTimerComplete] = useState(false)
 
@@ -42,15 +47,52 @@ export function RoutineProgressView({
 
   return (
     <div className="flex-1 flex flex-col space-y-6">
+      {/* YouTube 힌트 - 영상 영역 위 */}
+      {routine.link && (routine.link.includes('youtube.com') || routine.link.includes('youtu.be')) && !youtubeVideoId && (
+        <div className="flex items-center justify-center gap-2 px-4 py-2 bg-blue-50 border border-blue-100 rounded-lg">
+          <span className="material-icons text-blue-500 text-sm">tips_and_updates</span>
+          <p className="text-sm text-blue-700">
+            If the video doesn&apos;t play automatically, try saying <span className="font-semibold">&quot;Play the video&quot;</span>
+          </p>
+        </div>
+      )}
+
       {/* Camera Preview / Visual Area */}
       <div className="relative w-full aspect-[3/4] bg-gray-100 rounded-xl overflow-hidden shadow-md border border-gray-200">
-        {routine.videoVerification ? (
+        {/* Main content area - 4 cases based on YouTube + videoVerification */}
+        {youtubeVideoId && routine.videoVerification ? (
+          /* Case 4: YouTube + Video Verification → YouTube main + Camera PIP */
+          <>
+            <YouTubePlayer 
+              videoId={youtubeVideoId} 
+              className="w-full h-full"
+              onClose={onCloseYouTube}
+            />
+            {/* PIP Camera - bottom right corner */}
+            <div className="absolute bottom-4 right-4 w-[120px] h-[160px] rounded-xl overflow-hidden shadow-lg border-2 border-white/80 z-10">
+              <CameraPreview 
+                isActive={true} 
+                onFrame={videoRecognized ? undefined : onVideoFrame}
+                className="w-full h-full object-cover" 
+              />
+            </div>
+          </>
+        ) : youtubeVideoId ? (
+          /* Case 3: YouTube only → YouTube full screen */
+          <YouTubePlayer 
+            videoId={youtubeVideoId} 
+            className="w-full h-full"
+            onClose={onCloseYouTube}
+          />
+        ) : routine.videoVerification ? (
+          /* Case 2: Video Verification only → Camera full screen */
           <CameraPreview 
             isActive={true} 
             onFrame={videoRecognized ? undefined : onVideoFrame}
             className="w-full h-full object-cover" 
           />
         ) : (
+          /* Case 1: Neither → Icon placeholder */
           <div className="w-full h-full flex items-center justify-center bg-gradient-to-b from-gray-50 to-gray-100">
             <span className="material-symbols-outlined text-gray-300 text-8xl">
               {routine.name.toLowerCase().includes('meditat') ? 'self_improvement' :
