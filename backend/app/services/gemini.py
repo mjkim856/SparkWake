@@ -122,3 +122,95 @@ JSON 형식으로만 응답해주세요:
         suggestions=suggestions,
         generated_at=dt.datetime.now(tz=dt.timezone.utc),
     )
+
+
+@retry(
+    stop=stop_after_attempt(3),
+    wait=wait_exponential(multiplier=1, min=2, max=10),
+    retry=retry_if_exception_type(RETRYABLE_EXCEPTIONS),
+)
+async def generate_daily_summary(
+    today_results: list[dict],
+    weekly_history: list[dict],
+) -> str:
+    """
+    오늘 루틴 결과와 주간 히스토리를 분석하여 개인화된 AI 코칭 요약 생성
+    FR-9: AI Daily Summary
+    """
+    client = get_gemini_client()
+    
+    # 연속 완료 기록 계산
+    streaks = {}
+    for result in today_results:
+        routine_name = result.get("routineName", "")
+        if result.get("status") == "completed":
+            # 과거 기록에서 연속 완료 일수 계산
+            streak = 1
+            for day in weekly_history:
+                day_results = day.get("routineResults", [])
+                found = False
+                for r in day_results:
+                    if r.get("routineName") == routine_name and r.get("status") == "completed":
+                        streak += 1
+                        found = True
+                        break
+                if not found:
+                    break
+            streaks[routine_name] = streak
+    
+    # 스킵 패턴 분석
+    skip_patterns = {}
+    for result in today_results:
+        routine_name = result.get("routineName", "")
+        if result.get("status") == "skipped":
+            recent_skips = 1
+            for day in weekly_history[:3]:  # 최근 3일
+                day_results = day.get("routineResults", [])
+                for r in day_results:
+                    if r.get("routineName") == routine_name and r.get("status") == "skipped":
+                        recent_skips += 1
+                        break
+            if recent_skips >= 2:
+                skip_patterns[routine_name] = recent_skips
+    
+    prompt = f"""당신은 친근하고 격려하는 아침 루틴 코치입니다. 사용자의 오늘 루틴 결과와 최근 기록을 분석하여 개인화된 코칭 메시지를 작성해주세요.
+
+## 오늘 결과
+{json.dumps(today_results, ensure_ascii=False, indent=2)}
+
+## 연속 완료 기록 (오늘 포함)
+{json.dumps(streaks, ensure_ascii=False) if streaks else "없음"}
+
+## 최근 스킵 패턴 (최근 3일 기준)
+{json.dumps(skip_patterns, ensure_ascii=False) if skip_patterns else "없음"}
+
+## 작성 가이드
+1. 오늘 성과 칭찬 (완료율, 완료 개수 언급)
+2. 잘하고 있는 점 (연속 기록이 있으면 강조, 🔥 이모지 사용)
+3. 개선 포인트 (스킵 패턴이 있으면 부드럽게 언급, 대안 제시)
+4. 격려 마무리
+
+## 규칙
+- 톤: 친근하고 격려하는 말투
+- 길이: 3-5문장 (100자 내외)
+- 이모지: 적절히 사용 (👏 🔥 💪 등)
+- 언어: 한국어
+- 형식: 줄바꿈 없이 자연스러운 문단으로
+
+메시지만 출력하세요 (JSON 아님):"""
+
+    response = await client.aio.models.generate_content(
+        model="gemini-3-flash-preview",
+        contents=prompt,
+    )
+    
+    summary = response.text.strip()
+    
+    # 빈 응답이면 기본 메시지
+    if not summary:
+        completed = sum(1 for r in today_results if r.get("status") == "completed")
+        total = len(today_results)
+        rate = round(completed / total * 100) if total > 0 else 0
+        summary = f"오늘 {total}개 중 {completed}개 완료, {rate}% 달성! 👏 내일도 화이팅! 💪"
+    
+    return summary

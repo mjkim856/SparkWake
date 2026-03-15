@@ -436,7 +436,32 @@ You can use these tools:
       try {
         await setDoc(doc(db, 'users', user.uid, 'reports', today), report)
         console.log('[Report] Saved to Firestore:', today, 'completionRate:', report.completionRate)
-        // 저장 성공 후 상태 전환
+        
+        // FR-9: AI Summary 생성 요청 (fire-and-forget, 세션 전환 지연 방지)
+        const currentUser = auth?.currentUser
+        if (currentUser) {
+          currentUser.getIdToken().then(idToken => {
+            const apiUrl = process.env.NEXT_PUBLIC_API_URL || ''
+            fetch(`${apiUrl}/api/reports/generate-summary`, {
+              method: 'POST',
+              headers: {
+                'Authorization': `Bearer ${idToken}`,
+                'Content-Type': 'application/json',
+              },
+            })
+              .then(res => {
+                if (res.ok) console.log('[Report] AI Summary generated')
+              })
+              .catch(err => {
+                // Summary 생성 실패해도 리포트는 이미 저장됨
+                console.warn('[Report] AI Summary generation failed:', err)
+              })
+          }).catch(err => {
+            console.warn('[Report] Failed to get token for AI Summary:', err)
+          })
+        }
+        
+        // 저장 성공 후 상태 전환 (AI Summary 완료 대기 안 함)
         setState('report')
       } catch (error) {
         console.error('[Report] Failed to save:', error)
