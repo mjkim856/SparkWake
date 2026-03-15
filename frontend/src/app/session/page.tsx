@@ -149,16 +149,13 @@ function SessionContent() {
             ))}
           </div>
 
-          {/* Listen Button */}
-          {/* Listen Button - Coming Soon */}
+          {/* Go to Daily Report */}
           <button 
-            disabled
-            className="w-full flex items-center justify-center gap-3 bg-gray-200 text-gray-400 font-bold py-4 px-6 rounded-xl cursor-not-allowed mt-6"
-            aria-label="Listen to AI Summary - Coming soon"
+            onClick={() => router.push('/report')}
+            className="w-full flex items-center justify-center gap-2 bg-[#F5B301] hover:bg-[#E5A501] text-slate-900 font-bold py-4 px-6 rounded-xl transition-transform active:scale-95 shadow-[0_4px_20px_rgba(244,192,37,0.3)] mt-6"
           >
-            <span className="material-symbols-outlined text-2xl">graphic_eq</span>
-            Listen to AI Summary
-            <span className="text-xs bg-gray-300 px-2 py-0.5 rounded-full">Soon</span>
+            Go to Daily Report
+            <span className="material-symbols-outlined">arrow_forward</span>
           </button>
         </main>
 

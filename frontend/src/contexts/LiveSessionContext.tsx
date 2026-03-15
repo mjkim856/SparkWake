@@ -1,9 +1,10 @@
 'use client'
 
 import { createContext, useContext, useState, useRef, useCallback, useEffect, ReactNode } from 'react'
-import type { Routine, RoutineResult, SessionState, ToolCall, FunctionResponse } from '@/types'
+import type { Routine, RoutineResult, SessionState, ToolCall, FunctionResponse, DailyReport } from '@/types'
 import { useAuth } from './AuthContext'
-import { auth } from '@/lib/firebase'
+import { auth, db } from '@/lib/firebase'
+import { doc, setDoc } from 'firebase/firestore'
 import { createLiveSession, startMicrophoneStream, AudioPlayer, LiveSession } from '@/lib/gemini-live'
 
 // 음성 인식 키워드
@@ -228,82 +229,82 @@ export function LiveSessionProvider({ children }: { children: ReactNode }) {
 
       audioPlayerRef.current = new AudioPlayer()
 
-      // 시스템 프롬프트 (강화된 버전)
-      const systemPrompt = `당신은 미라클 모닝 AI 코치입니다. 한국어로 짧고 친절하게 대화하세요.
+      // System prompt (English version for hackathon)
+      const systemPrompt = `You are a Miracle Morning AI Coach. Speak in short, friendly sentences in English.
 
-## 오늘의 루틴 목록
+## Today's Routine List
 ${userRoutines.map((r, i) => {
   const hasYouTube = r.link && (r.link.includes('youtube.com') || r.link.includes('youtu.be'))
   if (r.videoVerification) {
-    return `${i + 1}. [루틴 제목]: ${r.name} (${r.duration}분)
-   [미션]: "${r.actionDescription || '행동 확인'}"
-   → 이 루틴은 비디오 인증이 필요합니다. 사용자가 [미션]을 수행해야 합니다.`
+    return `${i + 1}. [Routine]: ${r.name} (${r.duration} min)
+   [Mission]: "${r.actionDescription || 'Action verification'}"
+   → This routine requires video verification. User must perform the [Mission].`
   }
   if (hasYouTube) {
-    return `${i + 1}. [루틴 제목]: ${r.name} (${r.duration}분)
-   [YouTube 링크]: 있음
-   → 이 루틴 시작 시 play_youtube를 즉시 호출하세요!`
+    return `${i + 1}. [Routine]: ${r.name} (${r.duration} min)
+   [YouTube Link]: Available
+   → Call play_youtube immediately when this routine starts!`
   }
-  return `${i + 1}. [루틴 제목]: ${r.name} (${r.duration}분)`
+  return `${i + 1}. [Routine]: ${r.name} (${r.duration} min)`
 }).join('\n')}
 
-## 중요: 루틴 제목과 미션은 다릅니다!
-- [루틴 제목]: 루틴의 이름 (예: "Hand Yoga", "Morning Stretch")
-- [미션]: 비디오로 확인할 실제 행동 (예: "show hand", "wave", "손 흔들기")
-- 루틴 제목이 아닌 [미션]을 사용자에게 안내하세요!
+## Important: Routine title and Mission are different!
+- [Routine]: The name of the routine (e.g., "Hand Yoga", "Morning Stretch")
+- [Mission]: The actual action to verify via video (e.g., "show hand", "wave")
+- Guide the user with the [Mission], not the routine title!
 
-## 기본 규칙
-- 1-2문장으로 짧게, 격려하며 대화
-- 루틴 시작 시 [미션]이 있으면 반드시 미션 내용을 안내하세요
+## Basic Rules
+- Keep responses to 1-2 sentences, be encouraging
+- When starting a routine with a [Mission], always explain the mission
 
-## ⭐ YouTube 영상 자동 재생 규칙 (매우 중요!)
-- 루틴에 [YouTube 링크]가 있으면, 루틴 시작할 때 **즉시** play_youtube를 호출하세요!
-- 사용자가 요청하기 전에 먼저 재생하세요!
-- 예: "요가 영상 재생할게요!" 라고 말하면서 play_youtube() 호출
+## ⭐ YouTube Auto-Play Rules (Very Important!)
+- If a routine has a [YouTube Link], call play_youtube IMMEDIATELY when the routine starts!
+- Play it before the user asks!
+- Example: Say "Let me play the video for you!" while calling play_youtube()
 
-## 비디오 인증 규칙 (매우 중요!!!)
+## Video Verification Rules (Very Important!!!)
 
-### 1단계: 미션 안내 (루틴 시작 시)
-- "[미션] 행동을 해주세요!" 라고 안내
-- 이때 "완료"라는 단어를 절대 사용하지 마세요!
-- 예: "손을 카메라에 보여주세요!"
+### Step 1: Mission Guidance (When routine starts)
+- Say "Please [Mission action]!"
+- DO NOT use the word "complete" or "done" at this point!
+- Example: "Please show your hands to the camera!"
 
-### 2단계: 미션 확인 대기
-- 카메라로 사용자 행동을 관찰합니다
-- 아직 행동이 안 보이면 격려하세요
-- 이때도 "완료"라는 단어를 사용하지 마세요!
+### Step 2: Wait for Mission
+- Observe user's action through camera
+- Encourage if action is not visible yet
+- Still DO NOT use "complete" or "done"!
 
-### 3단계: 미션 완료 선언 (행동이 확인된 후에만!)
-- 카메라에서 [미션] 행동이 실제로 확인되면 그때만!
-- 반드시 다음 중 하나를 말하세요:
-  - "미션 완료!"
-  - "확인 완료!"
-  - "인증 완료!"
+### Step 3: Declare Mission Complete (Only after action is confirmed!)
+- Only when the [Mission] action is actually confirmed on camera!
+- You MUST say one of these:
+  - "Mission complete!"
+  - "Verified!"
+  - "Great job, done!"
 
-### 절대 금지
-- 미션 안내하면서 동시에 "완료"라고 말하기
-- 행동 확인 전에 "완료"라고 말하기
-- 예시 (잘못됨): "손을 보여주세요! 미션 완료!" ← 이렇게 하면 안 됨!
-- 예시 (올바름): "손을 보여주세요!" → (손 확인 후) → "잘했어요! 미션 완료!"
+### Absolutely Forbidden
+- Saying "complete" while giving mission guidance
+- Saying "done" before confirming the action
+- Wrong: "Show your hands! Mission complete!" ← Don't do this!
+- Correct: "Show your hands!" → (after seeing hands) → "Great job! Mission complete!"
 
-## 사용 가능한 도구 (Function Calling)
-당신은 다음 도구들을 사용할 수 있습니다:
+## Available Tools (Function Calling)
+You can use these tools:
 
-1. **play_youtube**: YouTube 영상 재생
-   - 사용자가 "영상 틀어줘", "비디오 재생", "요가 영상 보여줘" 등 요청하면 호출
-   - videoId 또는 query 파라미터 사용
+1. **play_youtube**: Play YouTube video
+   - Call when user says "play video", "show me yoga video", etc.
+   - Use videoId or query parameter
 
-2. **complete_routine**: 현재 루틴 완료 처리
-   - 사용자가 "다 했어", "완료", "끝났어" 등 말하면 호출
-   - 비디오 인증 완료 후에도 호출 가능
+2. **complete_routine**: Mark current routine as complete
+   - Call when user says "done", "finished", "completed", etc.
+   - Can also call after video verification is complete
 
-3. **skip_routine**: 현재 루틴 스킵
-   - 사용자가 "스킵", "넘어가", "패스" 등 말하면 호출
+3. **skip_routine**: Skip current routine
+   - Call when user says "skip", "next", "pass", etc.
 
-## 도구 사용 예시
-- "요가 영상 틀어줘" → play_youtube(query: "요가")
-- "다 했어" → complete_routine()
-- "이거 스킵할래" → skip_routine()`
+## Tool Usage Examples
+- "Play yoga video" → play_youtube(query: "yoga")
+- "I'm done" → complete_routine()
+- "Skip this one" → skip_routine()`
 
       const session = await createLiveSession(tokenData.token, systemPrompt, {
         onOpen: () => setState('wake_up'),
@@ -378,6 +379,10 @@ ${userRoutines.map((r, i) => {
     }
   }, [user, handleToolCall])
 
+  // 리포트 저장용 ref (최신 sessionResults 참조)
+  const sessionResultsRef = useRef<RoutineResult[]>([])
+  sessionResultsRef.current = sessionResults
+
   const endSession = useCallback(async () => {
     micStreamRef.current?.stop()
     micStreamRef.current = null
@@ -385,8 +390,44 @@ ${userRoutines.map((r, i) => {
     liveSessionRef.current = null
     audioPlayerRef.current?.close()
     audioPlayerRef.current = null
+
+    // 약간의 지연 후 저장 (상태 업데이트 완료 대기)
+    setTimeout(async () => {
+      const finalResults = sessionResultsRef.current
+      
+      // Firestore에 DailyReport 저장
+      if (user && db && finalResults.length > 0) {
+        const today = new Date().toISOString().split('T')[0]
+        const completedCount = finalResults.filter(r => r.status === 'completed').length
+        const skippedCount = finalResults.filter(r => r.status === 'skipped').length
+        const totalRoutines = routinesRef.current.length
+        
+        const report: DailyReport = {
+          id: today,
+          userId: user.uid,
+          date: today,
+          wakeUpTime: new Date().toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' }),
+          targetWakeUpTime: routinesRef.current[0]?.startTime || '6:00 AM',
+          snoozeCount: snoozeCount,
+          totalRoutines: totalRoutines,
+          completedRoutines: completedCount,
+          skippedRoutines: skippedCount,
+          completionRate: totalRoutines > 0 ? completedCount / totalRoutines : 0,
+          routineResults: finalResults,
+          createdAt: new Date().toISOString(),
+        }
+
+        try {
+          await setDoc(doc(db, 'users', user.uid, 'reports', today), report)
+          console.log('[Report] Saved to Firestore:', today, 'completionRate:', report.completionRate)
+        } catch (error) {
+          console.error('[Report] Failed to save:', error)
+        }
+      }
+    }, 100)
+
     setState('report')
-  }, [])
+  }, [user, snoozeCount])
 
 
   const completeRoutine = useCallback((method: 'auto' | 'manual') => {
@@ -419,35 +460,35 @@ ${userRoutines.map((r, i) => {
       const nextRoutine = routines[currentRoutineIndex + 1]
       setIsVideoEnabled(nextRoutine?.videoVerification || false)
       
-      // AI에게 다음 루틴 정보 알려주기
+      // Notify AI about next routine
       if (liveSessionRef.current?.isConnected()) {
         const hasYouTube = nextRoutine?.link && 
           (nextRoutine.link.includes('youtube.com') || nextRoutine.link.includes('youtu.be'))
         
         if (hasYouTube && nextRoutine?.videoVerification && nextRoutine?.actionDescription) {
           liveSessionRef.current.send(
-            `[시스템] 다음 루틴을 시작합니다.
-루틴 제목: "${nextRoutine.name}" (${nextRoutine.duration}분)
-YouTube 링크: "${nextRoutine.link}"
-미션: "${nextRoutine.actionDescription}"
-⚠️ 지금 바로 play_youtube를 호출하여 영상을 재생하세요! 그리고 사용자에게 미션을 안내하세요.`
+            `[System] Starting next routine.
+Routine: "${nextRoutine.name}" (${nextRoutine.duration} min)
+YouTube Link: "${nextRoutine.link}"
+Mission: "${nextRoutine.actionDescription}"
+⚠️ Call play_youtube NOW to play the video! Then guide the user on the mission.`
           )
         } else if (hasYouTube) {
           liveSessionRef.current.send(
-            `[시스템] 다음 루틴을 시작합니다.
-루틴 제목: "${nextRoutine?.name}" (${nextRoutine?.duration}분)
-YouTube 링크: "${nextRoutine?.link}"
-⚠️ 지금 바로 play_youtube를 호출하여 영상을 재생하세요!`
+            `[System] Starting next routine.
+Routine: "${nextRoutine?.name}" (${nextRoutine?.duration} min)
+YouTube Link: "${nextRoutine?.link}"
+⚠️ Call play_youtube NOW to play the video!`
           )
         } else if (nextRoutine?.videoVerification && nextRoutine?.actionDescription) {
           liveSessionRef.current.send(
-            `[시스템] 다음 루틴을 시작합니다.
-루틴 제목: "${nextRoutine.name}" (${nextRoutine.duration}분)
-미션: "${nextRoutine.actionDescription}"
-사용자에게 미션 행동을 안내하고, 카메라에서 확인되면 "미션 완료!"라고 말하세요.`
+            `[System] Starting next routine.
+Routine: "${nextRoutine.name}" (${nextRoutine.duration} min)
+Mission: "${nextRoutine.actionDescription}"
+Guide the user on the mission action, and say "Mission complete!" when confirmed on camera.`
           )
         } else {
-          liveSessionRef.current.send(`다음 루틴: "${nextRoutine?.name}" (${nextRoutine?.duration}분)`)
+          liveSessionRef.current.send(`Next routine: "${nextRoutine?.name}" (${nextRoutine?.duration} min)`)
         }
       }
     } else {
@@ -471,7 +512,7 @@ YouTube 링크: "${nextRoutine?.link}"
 
     setSessionResults((prev) => [...prev, result])
     setVideoRecognized(false)
-    setYoutubeVideoId(null)  // YouTube 상태 리셋
+    setYoutubeVideoId(null)  // Reset YouTube state
 
     if (currentRoutineIndex < routines.length - 1) {
       const nextIndex = currentRoutineIndex + 1
@@ -480,35 +521,35 @@ YouTube 링크: "${nextRoutine?.link}"
       const nextRoutine = routines[nextIndex]
       setIsVideoEnabled(nextRoutine?.videoVerification || false)
       
-      // AI에게 다음 루틴 정보 알려주기
+      // Notify AI about next routine
       if (liveSessionRef.current?.isConnected()) {
         const hasYouTube = nextRoutine?.link && 
           (nextRoutine.link.includes('youtube.com') || nextRoutine.link.includes('youtu.be'))
         
         if (hasYouTube && nextRoutine?.videoVerification && nextRoutine?.actionDescription) {
           liveSessionRef.current.send(
-            `[시스템] 다음 루틴을 시작합니다.
-루틴 제목: "${nextRoutine.name}" (${nextRoutine.duration}분)
-YouTube 링크: "${nextRoutine.link}"
-미션: "${nextRoutine.actionDescription}"
-⚠️ 지금 바로 play_youtube를 호출하여 영상을 재생하세요! 그리고 사용자에게 미션을 안내하세요.`
+            `[System] Starting next routine.
+Routine: "${nextRoutine.name}" (${nextRoutine.duration} min)
+YouTube Link: "${nextRoutine.link}"
+Mission: "${nextRoutine.actionDescription}"
+⚠️ Call play_youtube NOW to play the video! Then guide the user on the mission.`
           )
         } else if (hasYouTube) {
           liveSessionRef.current.send(
-            `[시스템] 다음 루틴을 시작합니다.
-루틴 제목: "${nextRoutine?.name}" (${nextRoutine?.duration}분)
-YouTube 링크: "${nextRoutine?.link}"
-⚠️ 지금 바로 play_youtube를 호출하여 영상을 재생하세요!`
+            `[System] Starting next routine.
+Routine: "${nextRoutine?.name}" (${nextRoutine?.duration} min)
+YouTube Link: "${nextRoutine?.link}"
+⚠️ Call play_youtube NOW to play the video!`
           )
         } else if (nextRoutine?.videoVerification && nextRoutine?.actionDescription) {
           liveSessionRef.current.send(
-            `[시스템] 다음 루틴을 시작합니다.
-루틴 제목: "${nextRoutine.name}" (${nextRoutine.duration}분)
-미션: "${nextRoutine.actionDescription}"
-사용자에게 미션 행동을 안내하고, 카메라에서 확인되면 "미션 완료!"라고 말하세요.`
+            `[System] Starting next routine.
+Routine: "${nextRoutine.name}" (${nextRoutine.duration} min)
+Mission: "${nextRoutine.actionDescription}"
+Guide the user on the mission action, and say "Mission complete!" when confirmed on camera.`
           )
         } else {
-          liveSessionRef.current.send(`다음 루틴: "${nextRoutine?.name}" (${nextRoutine?.duration}분)`)
+          liveSessionRef.current.send(`Next routine: "${nextRoutine?.name}" (${nextRoutine?.duration} min)`)
         }
       }
     } else {
@@ -567,30 +608,30 @@ YouTube 링크: "${nextRoutine?.link}"
       if (hasYouTube && firstRoutine.videoVerification && firstRoutine.actionDescription) {
         // YouTube + Video verification
         liveSessionRef.current.send(
-          `[시스템] 첫 번째 루틴을 시작합니다.
-루틴 제목: "${firstRoutine.name}"
-YouTube 링크: "${firstRoutine.link}"
-미션: "${firstRoutine.actionDescription}"
-⚠️ 지금 바로 play_youtube를 호출하여 영상을 재생하세요! 그리고 사용자에게 미션을 안내하세요.`
+          `[System] Starting first routine.
+Routine: "${firstRoutine.name}"
+YouTube Link: "${firstRoutine.link}"
+Mission: "${firstRoutine.actionDescription}"
+⚠️ Call play_youtube NOW to play the video! Then guide the user on the mission.`
         )
       } else if (hasYouTube) {
         // YouTube only
         liveSessionRef.current.send(
-          `[시스템] 첫 번째 루틴을 시작합니다.
-루틴 제목: "${firstRoutine.name}"
-YouTube 링크: "${firstRoutine.link}"
-⚠️ 지금 바로 play_youtube를 호출하여 영상을 재생하세요!`
+          `[System] Starting first routine.
+Routine: "${firstRoutine.name}"
+YouTube Link: "${firstRoutine.link}"
+⚠️ Call play_youtube NOW to play the video!`
         )
       } else if (firstRoutine.videoVerification && firstRoutine.actionDescription) {
         // Video verification only
         liveSessionRef.current.send(
-          `[시스템] 첫 번째 루틴을 시작합니다.
-루틴 제목: "${firstRoutine.name}"
-미션: "${firstRoutine.actionDescription}"
-사용자에게 미션 행동을 안내하고, 카메라에서 확인되면 "미션 완료!"라고 말하세요.`
+          `[System] Starting first routine.
+Routine: "${firstRoutine.name}"
+Mission: "${firstRoutine.actionDescription}"
+Guide the user on the mission action, and say "Mission complete!" when confirmed on camera.`
         )
       } else {
-        liveSessionRef.current.send(`좋은 아침! 첫 번째 루틴 "${firstRoutine.name}"을 시작해볼까요?`)
+        liveSessionRef.current.send(`Good morning! Let's start with "${firstRoutine.name}"!`)
       }
     }
   }, [routines])
