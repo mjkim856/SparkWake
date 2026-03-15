@@ -19,6 +19,7 @@ interface RoutineProgressViewProps {
   isAudioEnabled: boolean
   videoRecognized?: boolean
   youtubeVideoId?: string | null
+  youtubeError?: string | null
   onComplete: (method: 'auto' | 'manual') => void
   onSkip: () => void
   onToggleAudio: () => void
@@ -33,6 +34,7 @@ export function RoutineProgressView({
   isAudioEnabled,
   videoRecognized,
   youtubeVideoId,
+  youtubeError,
   onComplete,
   onSkip,
   onToggleAudio,
@@ -42,7 +44,7 @@ export function RoutineProgressView({
   const [isTimerComplete, setIsTimerComplete] = useState(false)
   
   const routineHasYouTube = hasYouTubeLink(routine.link)
-  const isWaitingForYouTube = routineHasYouTube && !youtubeVideoId
+  const isWaitingForYouTube = routineHasYouTube && !youtubeVideoId && !youtubeError
 
   const handleTimerComplete = useCallback(() => {
     setIsTimerComplete(true)
@@ -58,8 +60,15 @@ export function RoutineProgressView({
     <div className="flex-1 flex flex-col space-y-6">
       {/* Camera Preview / Visual Area */}
       <div className="relative w-full aspect-[3/4] bg-gray-100 rounded-xl overflow-hidden shadow-md border border-gray-200">
-        {/* Main content area - 5 cases */}
-        {isWaitingForYouTube ? (
+        {/* Main content area - 6 cases */}
+        {youtubeError ? (
+          /* Case -1: YouTube error → Show error message */
+          <div className="w-full h-full flex flex-col items-center justify-center bg-gradient-to-b from-gray-900 to-gray-800">
+            <span className="material-icons text-red-400 text-6xl mb-4">error_outline</span>
+            <p className="text-white text-lg font-medium mb-2">Video not found</p>
+            <p className="text-gray-400 text-sm">Please check the YouTube link in your routine settings</p>
+          </div>
+        ) : isWaitingForYouTube ? (
           /* Case 0: YouTube link exists but AI hasn't called play_youtube yet → Loading state */
           <div className="w-full h-full flex flex-col items-center justify-center bg-gradient-to-b from-gray-900 to-gray-800">
             <span className="material-icons text-red-500 text-6xl mb-4">smart_display</span>

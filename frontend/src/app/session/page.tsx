@@ -23,6 +23,7 @@ function SessionContent() {
     snoozeCount,
     aiMessage,
     youtubeVideoId,
+    youtubeError,
     startSession,
     completeRoutine,
     skipRoutine,
@@ -209,6 +210,7 @@ function SessionContent() {
             isAudioEnabled={isAudioEnabled}
             videoRecognized={videoRecognized}
             youtubeVideoId={youtubeVideoId}
+            youtubeError={youtubeError}
             onComplete={completeRoutine}
             onSkip={skipRoutine}
             onToggleAudio={toggleAudio}

@@ -52,6 +52,7 @@ interface LiveSessionContextValue {
   sessionResults: RoutineResult[]
   snoozeCount: number
   youtubeVideoId: string | null
+  youtubeError: string | null
 
   startSession: (routines: Routine[]) => Promise<void>
   endSession: () => Promise<void>
@@ -81,6 +82,7 @@ export function LiveSessionProvider({ children }: { children: ReactNode }) {
   const [sessionResults, setSessionResults] = useState<RoutineResult[]>([])
   const [snoozeCount, setSnoozeCount] = useState(0)
   const [youtubeVideoId, setYoutubeVideoId] = useState<string | null>(null)
+  const [youtubeError, setYoutubeError] = useState<string | null>(null)
 
   const liveSessionRef = useRef<LiveSession | null>(null)
   const micStreamRef = useRef<{ stop: () => void } | null>(null)
@@ -92,6 +94,10 @@ export function LiveSessionProvider({ children }: { children: ReactNode }) {
   const isVideoEnabledRef = useRef(false)
   const routinesRef = useRef<Routine[]>([])
   const currentRoutineIndexRef = useRef(0)
+  
+  // Tool Call에서 사용할 함수 ref (순환 의존성 해결)
+  const completeRoutineRef = useRef<((method: 'auto' | 'manual') => void) | null>(null)
+  const skipRoutineRef = useRef<(() => void) | null>(null)
 
   const currentRoutine = routines[currentRoutineIndex] || null
   
@@ -134,52 +140,32 @@ export function LiveSessionProvider({ children }: { children: ReactNode }) {
           if (!targetVideoId && query) {
             const lowerQuery = query.toLowerCase()
             for (const [keyword, id] of Object.entries(DEFAULT_YOUTUBE_VIDEOS)) {
-              if (lowerQuery.includes(keyword)) {
+              if (keyword !== 'default' && lowerQuery.includes(keyword)) {
                 targetVideoId = id
                 break
               }
             }
           }
           
-          // 3. 여전히 없으면 기본값
-          if (!targetVideoId) {
-            targetVideoId = DEFAULT_YOUTUBE_VIDEOS['default']
+          // 3. 유효한 videoId가 있으면 재생, 없으면 에러 표시
+          if (targetVideoId) {
+            setYoutubeVideoId(targetVideoId)
+            setYoutubeError(null)
+            result = { result: `YouTube 영상 재생 시작: ${targetVideoId}` }
+            console.log('[TOOL] play_youtube:', targetVideoId)
+          } else {
+            setYoutubeVideoId(null)
+            setYoutubeError('Video not found')
+            result = { result: '영상을 찾을 수 없습니다. 루틴에 YouTube 링크를 설정하거나 다른 검색어를 시도해주세요.' }
+            console.log('[TOOL] play_youtube: video not found')
           }
-          
-          setYoutubeVideoId(targetVideoId)
-          result = { result: `YouTube 영상 재생 시작: ${targetVideoId}` }
-          console.log('[TOOL] play_youtube:', targetVideoId)
           break
         }
         
         case 'complete_routine': {
-          if (currentRoutineRef.current) {
-            const routine = currentRoutineRef.current
-            const routineResult: RoutineResult = {
-              routineId: routine.id,
-              routineName: routine.name,
-              status: 'completed',
-              completionMethod: 'auto',
-              actualDuration: routine.duration,
-              startedAt: new Date().toISOString(),
-              completedAt: new Date().toISOString(),
-            }
-            
-            setSessionResults((prev) => [...prev, routineResult])
-            setVideoRecognized(false)
-            setYoutubeVideoId(null)
-            
-            const currentIdx = currentRoutineIndexRef.current
-            const allRoutines = routinesRef.current
-            
-            if (currentIdx < allRoutines.length - 1) {
-              setCurrentRoutineIndex(currentIdx + 1)
-              const nextRoutine = allRoutines[currentIdx + 1]
-              setIsVideoEnabled(nextRoutine?.videoVerification || false)
-            } else {
-              setIsVideoEnabled(false)
-              setState('report')
-            }
+          // 기존 completeRoutine 함수 재사용 (중복 로직 제거)
+          if (completeRoutineRef.current) {
+            completeRoutineRef.current('auto')
           }
           result = { result: '루틴 완료 처리됨' }
           console.log('[TOOL] complete_routine')
@@ -187,33 +173,9 @@ export function LiveSessionProvider({ children }: { children: ReactNode }) {
         }
         
         case 'skip_routine': {
-          if (currentRoutineRef.current) {
-            const routine = currentRoutineRef.current
-            const routineResult: RoutineResult = {
-              routineId: routine.id,
-              routineName: routine.name,
-              status: 'skipped',
-              completionMethod: null,
-              actualDuration: null,
-              startedAt: null,
-              completedAt: null,
-            }
-            
-            setSessionResults((prev) => [...prev, routineResult])
-            setVideoRecognized(false)
-            setYoutubeVideoId(null)
-            
-            const currentIdx = currentRoutineIndexRef.current
-            const allRoutines = routinesRef.current
-            
-            if (currentIdx < allRoutines.length - 1) {
-              setCurrentRoutineIndex(currentIdx + 1)
-              const nextRoutine = allRoutines[currentIdx + 1]
-              setIsVideoEnabled(nextRoutine?.videoVerification || false)
-            } else {
-              setIsVideoEnabled(false)
-              setState('report')
-            }
+          // 기존 skipRoutine 함수 재사용 (중복 로직 제거)
+          if (skipRoutineRef.current) {
+            skipRoutineRef.current()
           }
           result = { result: '루틴 스킵됨' }
           console.log('[TOOL] skip_routine')
@@ -448,6 +410,7 @@ ${userRoutines.map((r, i) => {
     }
     setIsAudioEnabled(false)
     setVideoRecognized(false)
+    setYoutubeVideoId(null)  // YouTube 상태 리셋
 
     if (currentRoutineIndex < routines.length - 1) {
       setCurrentRoutineIndex((prev) => prev + 1)
@@ -508,6 +471,7 @@ YouTube 링크: "${nextRoutine?.link}"
 
     setSessionResults((prev) => [...prev, result])
     setVideoRecognized(false)
+    setYoutubeVideoId(null)  // YouTube 상태 리셋
 
     if (currentRoutineIndex < routines.length - 1) {
       const nextIndex = currentRoutineIndex + 1
@@ -553,6 +517,10 @@ YouTube 링크: "${nextRoutine?.link}"
     }
   }, [currentRoutine, currentRoutineIndex, routines, endSession])
 
+  // Tool Call에서 사용할 함수 ref 업데이트
+  completeRoutineRef.current = completeRoutine
+  skipRoutineRef.current = skipRoutine
+
   const extendRoutine = useCallback((minutes: number) => {
     console.log(`Extending routine by ${minutes} minutes`)
   }, [])
@@ -560,6 +528,7 @@ YouTube 링크: "${nextRoutine?.link}"
   // YouTube 닫기
   const closeYouTube = useCallback(() => {
     setYoutubeVideoId(null)
+    setYoutubeError(null)
   }, [])
 
   const toggleAudio = useCallback(async () => {
@@ -669,6 +638,7 @@ YouTube 링크: "${firstRoutine.link}"
         sessionResults,
         snoozeCount,
         youtubeVideoId,
+        youtubeError,
         startSession,
         endSession,
         completeRoutine,
